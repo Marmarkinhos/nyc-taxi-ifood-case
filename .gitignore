@@ -1,11 +1,28 @@
+# Python
 .venv/
 __pycache__/
 *.pyc
 .pytest_cache/
 .ruff_cache/
 .mypy_cache/
-.databricks/
 dist/
 *.egg-info/
 .env
+
+# Databricks
+.databricks/
+
+# OS
 .DS_Store
+Thumbs.db
+
+# === SCRATCH (LOCAL DEV ONLY — NUNCA PUSH) ===
+# Referências do repo iFood, notas pessoais, drafts.
+# Contém código corporativo proprietário — NÃO deve ir pro GitHub público.
+.scratch/
+
+# === KILO state local ===
+# AGENTS.md/CONTEXT.md PODEM ir pro repo (ajudam avaliador a entender),
+# mas estado do Kilo, sessões, caches ficam locais.
+.kilo/state/
+.kilo/sessions/
