@@ -27,6 +27,7 @@ Implementação completa do case NYC Yellow Taxi, quebrada via skill
 | [11](./11-dbt-analyses.md) | dbt analyses (perguntas + EDA) | `ready-for-agent` | AFK | #08 |
 | [12](./12-notebook-dashboard.md) | Notebook `answers.py` + AI/BI dashboard | `ready-for-agent` | AFK | #11 |
 | [13](./13-readme-finalization.md) | README + monitoring view + revogação PAT | `ready-for-human` | HITL | #12 |
+| [14](./14-bronze-drift-metrics.md) | Bronze drift metrics + job-level alerting (gap do ADR-0014) | `ready-for-agent` | AFK | #06 |
 
 ## Caminhos críticos
 
