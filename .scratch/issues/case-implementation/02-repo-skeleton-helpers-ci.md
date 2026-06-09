@@ -1,8 +1,10 @@
 ---
-status: ready-for-agent
+status: done
 created: 2026-06-08
+closed: 2026-06-09
 tags: [skeleton, helpers, ci, tdd]
 blocks: [03-landing-notebook.md, 06-job-ingestion-dab.md]
+commits: [d13d6ac, 1fed2b6, c9e78dc]
 ---
 
 # 02 — Repo skeleton + helpers puros + CI

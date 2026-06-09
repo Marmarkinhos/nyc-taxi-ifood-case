@@ -15,7 +15,7 @@ Implementação completa do case NYC Yellow Taxi, quebrada via skill
 | # | Título | Status | Tipo | Bloqueado por |
 |---|---|---|---|---|
 | [01](./01-probe-dbt-task-dab-serverless.md) | Probe Opção B `dbt_task` no DAB serverless | `done` ✅ PASS | HITL | — |
-| [02](./02-repo-skeleton-helpers-ci.md) | Repo skeleton + helpers + CI | `ready-for-agent` | AFK | — |
+| [02](./02-repo-skeleton-helpers-ci.md) | Repo skeleton + helpers + CI | `done` ✅ | AFK | — |
 | [03](./03-landing-notebook.md) | Landing notebook + `landing_audit` | `ready-for-agent` | AFK | #02 |
 | [04](./04-dlt-bronze-silver-canonica.md) | DLT Bronze + Silver canônica | `ready-for-agent` | AFK | #03 |
 | [05](./05-dlt-expectations.md) | DLT expectations (6 Silver + 1 Bronze warn) | `ready-for-agent` | AFK | #04 |
@@ -37,6 +37,7 @@ Implementação completa do case NYC Yellow Taxi, quebrada via skill
 
 ## Próximo passo
 
-#01 fechou PASS (2026-06-08) — #10 segue planejado, sem fallback.
+#01 fechou PASS (2026-06-08), #02 fechou (2026-06-09). Próximo na
+critical path: **#03 — Landing notebook + `landing_audit`**.
 Resto do work pode ser puxado em paralelo por agentes AFK
-respeitando dependências. Critical path: #02 → #03 → #04 → #06.
+respeitando dependências. Critical path restante: #03 → #04 → #06.
