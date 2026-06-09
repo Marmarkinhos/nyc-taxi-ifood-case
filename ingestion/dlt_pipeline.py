@@ -59,7 +59,7 @@ import dlt  # type: ignore[import-not-found]  # Databricks-provided
 from pyspark.sql import functions as F  # noqa: N812
 
 from nyc_taxi_case.schema import FILE_YEAR_MONTH_PATTERN, REQUIRED_TLC_COLUMNS
-from nyc_taxi_case.tlc_schema import TLC_RENAME_MAP, canonical_type
+from nyc_taxi_case.tlc_schema import TLC_RENAME_MAP, bronze_schema_hints, canonical_type
 
 # --------------------------------------------------------------------------- #
 # DLT expectation rules
@@ -134,6 +134,24 @@ _LANDING_VOLUME_PATH = _conf(
         # changing the streaming semantics.
         "delta.autoOptimize.optimizeWrite": "true",
         "delta.autoOptimize.autoCompact": "true",
+        # ADR-0013: TLC Yellow parquets declare tpep_pickup_datetime /
+        # tpep_dropoff_datetime as TIMESTAMP_NTZ (no timezone). Auto
+        # Loader's inferColumnTypes preserves that, but Delta on Free
+        # Edition does not enable the ``timestampNtz`` table feature
+        # by default — first write fails with
+        # DELTA_FEATURES_REQUIRE_MANUAL_ENABLEMENT. Enabling the
+        # feature here keeps the Bronze fiel-à-fonte (ADR-0001) and is
+        # the runtime equivalent of the autoOptimize flags above
+        # (configuração de runtime, não transformação semântica).
+        "delta.feature.timestampNtz": "supported",
+        # ADR-0015: enable Delta type widening so the reader's
+        # ``addNewColumnsWithTypeWidening`` mode can widen narrow
+        # source types (e.g. INT32 → INT64) into the existing column
+        # type without rewriting data. Prereq per Databricks docs:
+        # https://docs.databricks.com/aws/en/ingestion/cloud-object-storage/auto-loader/type-widening#prerequisites
+        # Without this, the 3 INT-width-drifting columns (VendorID /
+        # PULocationID / DOLocationID) would still rescue.
+        "delta.enableTypeWidening": "true",
     },
 )
 # Expectation #7-bronze (ADR-0007): warn-only schema contract — the 5 columns
@@ -142,6 +160,17 @@ _LANDING_VOLUME_PATH = _conf(
 # event_log without aborting Bronze. The rule itself is sourced from
 # ``REQUIRED_TLC_COLUMNS`` (same constant the pytest contract reads).
 @dlt.expect("bronze_required_columns_not_null", _BRONZE_REQUIRED_NOT_NULL_RULE)  # type: ignore[misc]
+# Expectation #8-bronze (ADR-0014): warn-only drift detector for the
+# Auto Loader rescue column. With ``cloudFiles.schemaHints`` anchoring
+# the 19 TLC columns (Fix #7), ``_rescued_data`` should be NULL on every
+# row. Any non-NULL value means either (a) TLC introduced a 20th column
+# the helper does not know about, or (b) a TLC dtype/name drifted past
+# what the hints can absorb. The expectation makes both visible in
+# ``event_log`` without breaking the pipeline — drop/fail would shoot
+# the messenger (see ADR-0007: the schema-drift signal is more valuable
+# than the rows it taints). The percentage of failed records is the
+# load-bearing metric; ticket #14 lifts it to job-level alerting.
+@dlt.expect("bronze_no_rescued_data", "_rescued_data IS NULL")  # type: ignore[misc]
 def yellow_taxi_trips_raw() -> DataFrame:
     """Bronze Streaming Table — TLC parquets via Auto Loader.
 
@@ -163,10 +192,47 @@ def yellow_taxi_trips_raw() -> DataFrame:
     reader = (
         spark.readStream.format("cloudFiles")
         .option("cloudFiles.format", "parquet")
-        .option("cloudFiles.schemaEvolutionMode", "addNewColumns")
+        # ADR-0015: switch from ``addNewColumns`` to
+        # ``addNewColumnsWithTypeWidening``. The latter widens supported
+        # data types automatically (e.g. INT32→INT64, INT64→DOUBLE)
+        # without rescuing the row group. This is load-bearing for the
+        # TLC 2023 dataset: feb-mai ships 5 columns at narrower types
+        # than jan (VendorID/PULocationID/DOLocationID INT64→INT32,
+        # passenger_count/RatecodeID DOUBLE→INT64). Without widening,
+        # those 5 columns trigger ``_rescued_data IS NOT NULL`` on
+        # 100 % of feb-mai rows.
+        # https://docs.databricks.com/aws/en/ingestion/cloud-object-storage/auto-loader/type-widening
+        .option("cloudFiles.schemaEvolutionMode", "addNewColumnsWithTypeWidening")
         # Inferring column types from parquet directly (vs sampling) is
         # safe here: parquet carries the schema in the footer.
         .option("cloudFiles.inferColumnTypes", "true")
+        # ADR-0015 (supersedes ADR-0014): anchor name + source-side
+        # type for the 14 TLC columns that have NOT drifted across
+        # jan-mai 2023. The 5 type-drifting columns (VendorID,
+        # passenger_count, RatecodeID, PULocationID, DOLocationID)
+        # are deliberately NOT hinted — they would block the type
+        # widening above. See ``BRONZE_SCHEMA_HINT_TYPES`` docstring
+        # for the full empirical drift table.
+        .option("cloudFiles.schemaHints", bronze_schema_hints())
+        # ADR-0014 follow-up correction (Fix #8): hints anchor the
+        # canonical name (``airport_fee``) but the parquet reader's
+        # default ``readerCaseSensitive=true`` still sends case-different
+        # source fields (``Airport_fee`` in TLC feb–mai/2023) to
+        # ``_rescued_data``. The Databricks docs name this exact
+        # behaviour and the exact escape hatch:
+        # https://docs.databricks.com/aws/en/ingestion/cloud-object-storage/auto-loader/schema#change-case-sensitive-behavior
+        # Note: ``readerCaseSensitive`` is a **format-specific**
+        # DataFrameReader option (per Spark API reference §Parquet),
+        # NOT a ``cloudFiles.*`` option — Auto Loader rejects the
+        # ``cloudFiles.readerCaseSensitive`` form with
+        # ``CF_UNKNOWN_OPTION_KEYS_ERROR``. Setting it to ``false``
+        # makes the parquet reader resolve fields case-insensitively
+        # against the hint-anchored schema, so ``Airport_fee`` reads
+        # INTO ``airport_fee`` instead of rescuing the whole row
+        # group. This anchoring still matters under ADR-0015 because
+        # the case drift is not a type-class drift and would not be
+        # solved by type widening alone.
+        .option("readerCaseSensitive", "false")
     )
     return (
         reader.load(_LANDING_VOLUME_PATH)
@@ -209,13 +275,44 @@ def _build_silver_projection(bronze: DataFrame) -> DataFrame:
     1. Project ``CAST(source_column AS <canonical_type>)``.
     2. Alias to the snake_case name.
 
+    The two columns ``passenger_count`` and ``RatecodeID`` are special
+    (ADR-0015): TLC drifted their physical type from DOUBLE (jan/2023)
+    to INT64 (feb-mai/2023). The Auto Loader type-widening table only
+    widens ``long → decimal`` and has no path for ``long → double``,
+    so feb-mai rows land with the typed column NULL and the original
+    integer value in ``_rescued_data``. This projection recovers them
+    via ``coalesce(typed_col, get_json_object(_rescued_data, ...))``
+    so the downstream ``passenger_count BETWEEN 0 AND 9`` expectation
+    sees the real value, not NULL.
+
     Then append the two derived columns and the Auto Loader metadata
     aliases the Bronze stage already promoted.
     """
-    projection = [
-        F.col(source).cast(canonical_type(source)).alias(target)
-        for source, target in TLC_RENAME_MAP.items()
-    ]
+    # ADR-0015 type-drift recovery: 2 columns that Auto Loader cannot
+    # widen across jan↔feb-mai 2023. Map: source name → JSON path used
+    # by ``get_json_object``. The recovered value is cast to the same
+    # canonical type the projection would have produced (BIGINT for
+    # both — see TLC_COLUMN_TYPES in nyc_taxi_case.tlc_schema).
+    _RESCUED_RECOVERY: dict[str, str] = {
+        "passenger_count": "$.passenger_count",
+        "RatecodeID": "$.RatecodeID",
+    }
+
+    def _project(source: str, target: str) -> F.Column:
+        cast_type = canonical_type(source)
+        typed = F.col(source).cast(cast_type)
+        if source in _RESCUED_RECOVERY:
+            # The rescued value is a JSON number; ``get_json_object``
+            # returns it as STRING which we cast to the canonical type.
+            # ``coalesce`` keeps the typed col when non-NULL (jan path)
+            # and falls back to the rescued value otherwise (feb-mai).
+            recovered = F.get_json_object(F.col("_rescued_data"), _RESCUED_RECOVERY[source]).cast(
+                cast_type
+            )
+            return F.coalesce(typed, recovered).alias(target)
+        return typed.alias(target)
+
+    projection = [_project(source, target) for source, target in TLC_RENAME_MAP.items()]
     return bronze.select(
         *projection,
         # pickup_year_month: derived from the (already cast) timestamp.
@@ -259,6 +356,14 @@ def _build_silver_projection(bronze: DataFrame) -> DataFrame:
         "delta.autoOptimize.optimizeWrite": "true",
         "delta.autoOptimize.autoCompact": "true",
         "delta.tuneFileSizesForRewrites": "true",
+        # ADR-0013: defensive enable of timestampNtz feature. The Silver
+        # projection casts tpep_*_datetime to TIMESTAMP-com-tz (see
+        # ``canonical_type`` in nyc_taxi_case.tlc_schema), so the
+        # current Silver schema does not need this flag. We enable it
+        # anyway to (a) match the Bronze contract symmetrically and
+        # (b) survive a future TLC addition of a NTZ column that the
+        # Silver projection forwards verbatim.
+        "delta.feature.timestampNtz": "supported",
     },
 )
 # Silver expectations (ticket #05, ADR-0007). Grouped by severity:

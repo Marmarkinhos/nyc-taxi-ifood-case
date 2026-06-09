@@ -33,9 +33,11 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 __all__ = [
+    "BRONZE_SCHEMA_HINT_TYPES",
     "TLC_COLUMN_TYPES",
     "TLC_RENAME_MAP",
     "UnknownTlcColumnError",
+    "bronze_schema_hints",
     "canonical_name",
     "canonical_type",
 ]
@@ -189,3 +191,93 @@ def canonical_type(column: str) -> str:
     """
     snake = canonical_name(column)
     return TLC_COLUMN_TYPES[snake]
+
+
+# --------------------------------------------------------------------------- #
+# Bronze schemaHints types (source-side, NOT canonical)
+# --------------------------------------------------------------------------- #
+# ADR-0015 (supersedes ADR-0014): the Bronze ``cloudFiles.schemaHints``
+# declares the **source** parquet schema (the actual physical types TLC
+# ships), not the Silver canonical types. Two reasons:
+#
+# 1. Bronze is fiel-à-fonte (ADR-0001). Declaring BIGINT for a column the
+#    parquet ships as DOUBLE would be a cast disguised as a hint —
+#    exactly what Fix #6 / ADR-0013 rejected for ``timestampNtz``.
+# 2. Auto Loader's ``schemaHints`` only **anchors** type/name resolution
+#    against drift; it does not transform. **Critically, hints DISABLE
+#    automatic type widening on the hinted columns** — Databricks docs:
+#    "When you specify schema hints, Auto Loader doesn't cast the column
+#    to the specified type, but rather tells the Parquet reader to read
+#    the column as the specified type. In the case of a mismatch, Auto
+#    Loader rescues the column".
+#
+# Empirical TLC drift, jan vs feb 2023 (verified with pyarrow against the
+# 5 TLC public parquets):
+#
+#   VendorID         jan=INT64    feb-mai=INT32     ← width drift
+#   passenger_count  jan=DOUBLE   feb-mai=INT64     ← type-class drift
+#   RatecodeID       jan=DOUBLE   feb-mai=INT64     ← type-class drift
+#   PULocationID     jan=INT64    feb-mai=INT32     ← width drift
+#   DOLocationID     jan=INT64    feb-mai=INT32     ← width drift
+#   airport_fee      jan=lower    feb-mai=CamelCase ← case drift
+#
+# The 5 type-drifting columns are deliberately **not** hinted here so
+# Auto Loader's ``addNewColumnsWithTypeWidening`` evolution mode can
+# widen INT32→INT64 / INT64→DOUBLE without rescuing the row group. The
+# 14 columns below are the ones TLC has not drifted on across jan-mai
+# 2023; they keep their anchored hint so a future source-side schema
+# surprise on them surfaces in ``_rescued_data`` instead of silently
+# replacing a value.
+#
+# ``airport_fee`` IS hinted (lowercase) to preserve the
+# ``readerCaseSensitive=false`` anchoring — the Camel/lower drift is
+# resolved at the reader level, not by widening.
+#
+# Keys are the **TLC source names** (CamelCase preserved where TLC uses
+# it). Values are the Spark SQL DDL type that Auto Loader's schemaHints
+# string accepts.
+BRONZE_SCHEMA_HINT_TYPES: Mapping[str, str] = {
+    "tpep_pickup_datetime": "TIMESTAMP_NTZ",
+    "tpep_dropoff_datetime": "TIMESTAMP_NTZ",
+    "trip_distance": "DOUBLE",
+    "store_and_fwd_flag": "STRING",
+    "payment_type": "BIGINT",
+    "fare_amount": "DOUBLE",
+    "extra": "DOUBLE",
+    "mta_tax": "DOUBLE",
+    "tip_amount": "DOUBLE",
+    "tolls_amount": "DOUBLE",
+    "improvement_surcharge": "DOUBLE",
+    "total_amount": "DOUBLE",
+    "congestion_surcharge": "DOUBLE",
+    "airport_fee": "DOUBLE",
+}
+
+
+def bronze_schema_hints() -> str:
+    """Return the ``cloudFiles.schemaHints`` string for the Bronze reader.
+
+    Output format follows Spark SQL DDL: a comma-separated
+    ``"<name> <type>"`` list. Auto Loader accepts this directly via
+    ``option("cloudFiles.schemaHints", ...)``.
+
+    The hints are the **anchoring contract** for the Bronze schema
+    (ADR-0014). Concretely, they:
+
+    * Pin the canonical name we want for each column. Without this,
+      a TLC file shipping ``Airport_fee`` (CamelCase) against a Bronze
+      schema cached as ``airport_fee`` (lowercase) triggers a parquet
+      reader case-mismatch and the entire row group gets dumped into
+      ``_rescued_data`` — observed empirically with the TLC 2023-02
+      file rename (Fix #7).
+    * Pin the source-side type so a TLC dtype surprise (e.g.
+      ``total_amount`` arriving as STRING) is materialised as a hard
+      cast failure instead of silent NULL-ification.
+
+    The function is built from :data:`BRONZE_SCHEMA_HINT_TYPES` so a
+    schema change requires editing exactly **one** map. The pytest
+    contract enforces that every key in :data:`TLC_RENAME_MAP` also
+    appears here (count + value parity), preventing the two from
+    drifting silently.
+    """
+    return ", ".join(f"{name} {dtype}" for name, dtype in BRONZE_SCHEMA_HINT_TYPES.items())
