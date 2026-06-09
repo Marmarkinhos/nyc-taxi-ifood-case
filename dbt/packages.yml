@@ -1,0 +1,18 @@
+# dbt/packages.yml
+#
+# External dbt packages. Kept empty on purpose — the skeleton needs
+# nothing beyond core dbt. ``dbt_utils`` is the obvious add later
+# (e.g. for ``generate_surrogate_key`` if a wider dim table arrives),
+# but YAGNI: 1 seed + 1 Gold model + 4 tests do not justify pulling
+# a package in.
+#
+# When a real need surfaces, the canonical entry looks like:
+#
+#   packages:
+#     - package: dbt-labs/dbt_utils
+#       version: [">=1.3.0", "<2.0.0"]
+#
+# File is kept (instead of deleted) so ``dbt deps`` is a no-op rather
+# than an error, and so adding a package is a one-line edit.
+
+packages: []

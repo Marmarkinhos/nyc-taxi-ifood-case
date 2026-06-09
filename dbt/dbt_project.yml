@@ -1,0 +1,84 @@
+# dbt/dbt_project.yml
+#
+# dbt project for the modelling side of the nyc-taxi case (ADR-0010,
+# ADR-0011). Consumes the Silver canonical table produced by
+# ``job_ingestion`` (DLT + Auto Loader) via ``models/sources.yml``
+# and publishes Gold + ``dim_locations`` + analyses under
+# ``${prefix}nyc_taxi_gold``.
+#
+# Naming conventions:
+#   - Project name matches the wheel package (``nyc_taxi_case``) so the
+#     two halves of the monorepo share an identifier.
+#   - No ``_int_``/``_fin_`` model prefix convention (rejected at
+#     planning time — over-engineering for 3 models; cited in README).
+#   - Default materialization is ``view`` (cheap to rebuild, fits a
+#     case with ~16M Silver rows + small Gold projection).
+#
+# Schema semantics:
+#   - Models default to ``${target.schema}`` (no ``+schema`` override).
+#     The profile / ``dbt_task.schema`` sets the final schema directly
+#     so we do NOT get the dbt ``<target>_<config>`` concat (probe B
+#     lesson, ADR-0010 §Validação empírica).
+#   - Seeds explicitly land in ``${target.schema}`` too — same single
+#     gold schema; no per-folder schema override.
+#
+# Compatibility with the ``dbt_task`` runtime (ticket #10):
+#   - Profile resolution: the Databricks runtime auto-generates a
+#     ``databricks_cluster`` profile when ``dbt_task.catalog/schema/
+#     warehouse_id`` are set. Our committed ``profiles.yml`` (with
+#     profile ``nyc_taxi_case``) is only used by **local CLI** runs;
+#     the runtime ignores it (ADR-0010 lesson).
+#   - ``--target`` is NOT passed in ``dbt_task.commands`` — the
+#     runtime picks ``databricks_cluster`` automatically.
+
+name: nyc_taxi_case
+version: 0.1.0
+config-version: 2
+
+# Profile used by local CLI runs. ``dbt_task`` ignores this and uses
+# the auto-generated ``databricks_cluster`` profile.
+profile: nyc_taxi_case
+
+# Standard dbt directory layout (kept default for legibility).
+model-paths: ["models"]
+analysis-paths: ["analyses"]
+test-paths: ["tests"]
+seed-paths: ["seeds"]
+macro-paths: ["macros"]
+snapshot-paths: ["snapshots"]
+
+clean-targets:
+  - "target"
+  - "dbt_packages"
+  - "logs"
+
+# ---------------------------------------------------------------------------
+# Models
+# ---------------------------------------------------------------------------
+# Default materialization for every model unless overridden in the
+# model's ``{{ config(...) }}`` block. Cheap to rebuild and aligns with
+# the case scale (~16M Silver rows; Gold is a thin projection).
+models:
+  nyc_taxi_case:
+    +materialized: view
+
+# ---------------------------------------------------------------------------
+# Seeds
+# ---------------------------------------------------------------------------
+# ``taxi_zone_lookup`` is the TLC zone reference (260 rows) that
+# materialises ``dim_locations`` (ADR-0009). Tied to the same gold
+# schema as the models — no per-folder override.
+#
+# Column types are FORCED (not inferred) so ``location_id`` stays INT
+# and matches ``PULocationID`` / ``DOLocationID`` from the Silver
+# source. This makes the future ``relationships`` test (#09) work
+# without a silent type mismatch (ADR-0009 §Decision item 1).
+seeds:
+  nyc_taxi_case:
+    taxi_zone_lookup:
+      +alias: dim_locations
+      +column_types:
+        location_id: int
+        borough: string
+        zone: string
+        service_zone: string

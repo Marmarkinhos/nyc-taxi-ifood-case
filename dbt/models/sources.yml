@@ -1,0 +1,79 @@
+# dbt/models/sources.yml
+#
+# Contract between the ingestion side (``job_ingestion``: DLT + Auto
+# Loader, ADR-0010) and the modelling side (this project). The two
+# sides do not share job-level dependencies; this file is the only
+# coupling point — change it and you've changed the contract.
+#
+# Schema layout in Free Edition:
+#   * Silver lives in the ``bronze`` schema namespace because the
+#     Lakeflow pipeline publishes both ``yellow_taxi_trips_raw``
+#     (Bronze) and ``yellow_taxi_trips`` (Silver) under the same
+#     target schema (``resources/dlt_pipeline.yml`` line 34 uses
+#     ``target: ${var.bronze_schema}`` — see AGENTS.md gotcha
+#     "single workspace catalog"). The variable name
+#     ``silver_schema`` exists in ``general_variables.yml`` as a
+#     forward-compatibility lever but is NOT where the table actually
+#     resides today.
+#   * Monitoring lives in its own ``nyc_taxi_monitoring`` schema
+#     (audit table only).
+#
+# Catalog + schema names are resolved via ``env_var()`` so a
+# multi-tenant workspace can prefix schemas per user without editing
+# this file. Defaults match ``databricks.yml`` (catalog ``workspace``,
+# prefix empty).
+#
+# Loaders / descriptions are kept terse; the source-of-truth for what
+# each column means is the DLT pipeline (``ingestion/dlt_pipeline.py``)
+# and CONTEXT.md.
+#
+# Freshness:
+#   * The Silver source declares a soft warn at 24h on
+#     ``_ingestion_ts`` (the Bronze-added timestamp that flows into
+#     Silver). ``job_ingestion`` is manual on Free Edition, so any
+#     real check is best-effort — the warn is there so
+#     ``dbt source freshness`` returns a meaningful signal rather
+#     than a silent pass.
+#   * ``landing_audit`` has no freshness check: the table is small
+#     and the run-window filter logic (ADR-0003) handles staleness
+#     downstream, not freshness here.
+
+version: 2
+
+sources:
+
+  - name: silver
+    description: >-
+      Silver canonical table produced by the DLT pipeline
+      ``yellow_taxi_ingestion``. Snake_case, typed, expectation-filtered
+      copy of the TLC parquet schema. See CONTEXT.md ("Silver") and
+      ADR-0001.
+    database: "{{ env_var('CATALOG', 'workspace') }}"
+    schema: "{{ env_var('CATALOG_PREFIX', '') }}nyc_taxi_bronze"
+    tables:
+      - name: yellow_taxi_trips
+        description: >-
+          Per-trip Silver table (~16M rows for Jan–May 2023). Source
+          of truth for every Gold projection and analysis.
+        # dbt 1.11+ requires ``loaded_at_field`` and ``freshness``
+        # under ``config:`` (top-level form is deprecated). Soft warn
+        # only — ``job_ingestion`` is manual on Free Edition, so a
+        # hard error would be noise.
+        config:
+          loaded_at_field: _ingestion_ts
+          freshness:
+            warn_after: { count: 24, period: hour }
+
+  - name: monitoring
+    description: >-
+      Operational audit emitted by the landing notebook + backfilled
+      by ``update_audit_task``. Used by Gold to filter to the ingestion
+      window of the most recent successful run (ADR-0003, ADR-0008).
+    database: "{{ env_var('CATALOG', 'workspace') }}"
+    schema: "{{ env_var('CATALOG_PREFIX', '') }}nyc_taxi_monitoring"
+    tables:
+      - name: landing_audit
+        description: >-
+          One row per ``job_ingestion`` run. Carries the start/end
+          year_month window, the DLT update id, and status. Schema in
+          ADR-0008.

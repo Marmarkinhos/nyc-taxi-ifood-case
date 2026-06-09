@@ -1,0 +1,59 @@
+# dbt/profiles.yml
+#
+# Profile consumed by **local CLI runs** of dbt against the Free
+# Edition workspace. The Databricks ``dbt_task`` runtime IGNORES this
+# file and uses an auto-generated ``databricks_cluster`` profile when
+# ``catalog/schema/warehouse_id`` are set on the task (probe B lesson,
+# ADR-0010 §Validação empírica).
+#
+# Committing this file is intentional — it lets a fresh clone run
+# ``dbt parse`` / ``dbt seed`` without manual setup. Secrets stay
+# outside via ``env_var()``:
+#
+#   export DBT_TOKEN="$(awk '/^\[free-edition\]/{f=1;next} f && /^token/{print $3;exit}' ~/.databrickscfg)"
+#   cd dbt
+#   dbt seed --target user_dev
+#
+# Targets mirror ``databricks.yml`` so ``--target user_dev`` points at
+# the same workspace as ``bundle deploy --target user_dev``.
+#
+# Schema/catalog are written directly (NOT prefixed by dbt with the
+# target name) because ``dbt_project.yml`` omits ``+schema`` on models
+# and seeds. This keeps ``dim_locations`` in
+# ``workspace.nyc_taxi_gold.dim_locations`` rather than
+# ``workspace.nyc_taxi_gold_nyc_taxi_gold.dim_locations`` (probe B
+# lesson).
+
+nyc_taxi_case:
+  target: user_dev
+
+  outputs:
+
+    # --------------------------------------------------------------------
+    # user_dev — personal dev target on Databricks Free Edition.
+    # --------------------------------------------------------------------
+    user_dev:
+      type: databricks
+      catalog: workspace
+      schema: nyc_taxi_gold
+      host: dbc-88968762-8346.cloud.databricks.com
+      http_path: /sql/1.0/warehouses/10ba36a843e45ac1
+      token: "{{ env_var('DBT_TOKEN') }}"
+      threads: 4
+      # Cold start of the Serverless Starter Warehouse is ~20s; bump
+      # the default timeout so the first statement doesn't trip.
+      connect_timeout: 60
+      connect_retries: 3
+
+    # --------------------------------------------------------------------
+    # prod — placeholder so ``dbt parse --target prod`` resolves.
+    # Not used at runtime (Free Edition has no SP).
+    # --------------------------------------------------------------------
+    prod:
+      type: databricks
+      catalog: workspace
+      schema: nyc_taxi_gold
+      host: example-prod.cloud.databricks.com
+      http_path: /sql/1.0/warehouses/PLACEHOLDER
+      token: "{{ env_var('DBT_TOKEN', 'PLACEHOLDER') }}"
+      threads: 4

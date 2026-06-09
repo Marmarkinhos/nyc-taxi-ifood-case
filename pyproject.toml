@@ -19,6 +19,14 @@ dev = [
   "ruff>=0.6",
   "mypy>=1.10",
 ]
+# dbt-databricks is the local CLI dependency for the modelling side
+# (ADR-0010 / ticket #07). Pinned compatible with the runtime version
+# resolved by the ``dbt_task`` serverless environment in probe B
+# (dbt-databricks 1.12.0, ADR-0010 §Validação empírica). Kept as an
+# extra so plain ``uv sync`` for the ingestion side does not pull dbt.
+dbt = [
+  "dbt-databricks>=1.10,<2",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
