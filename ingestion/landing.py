@@ -51,7 +51,7 @@ from nyc_taxi_case.audit import (
     ProbeResult,
     build_audit_row,
 )
-from nyc_taxi_case.landing_paths import build_volume_object_path
+from nyc_taxi_case.landing_paths import build_volume_object_path, parse_volume_base
 from nyc_taxi_case.probe import (
     PROBE_TIMEOUT_SECONDS,
     classify_probe_exception,
@@ -62,6 +62,7 @@ from nyc_taxi_case.window import expand_window
 
 if TYPE_CHECKING:  # pragma: no cover - type-only imports
     from pyspark.sql import SparkSession
+    from pyspark.sql.types import StructType
 
 # --------------------------------------------------------------------------- #
 # Databricks-injected globals
@@ -270,6 +271,30 @@ def _ensure_audit_table(  # pragma: no cover - IO
     session.sql(ddl)
 
 
+def _ensure_landing_volume(  # pragma: no cover - IO
+    session: SparkSession, params: JobParams
+) -> None:
+    """Create the Landing schema + Volume on first run.
+
+    The Landing layer (CONTEXT.md) is a MANAGED Volume UC sitting under
+    ``<catalog>.<bronze_schema>.<volume>``. ADR-0011 / ticket #06 wired
+    every other UC object the pipeline needs (audit schema + table, DLT
+    Bronze + Silver via the pipeline's ``catalog`` + ``target``), but
+    the Landing schema/Volume themselves had to be created by hand —
+    which silently broke ``_download_to_volume`` on a fresh workspace
+    (``os.makedirs`` against a non-existent Volume returns
+    ``FileNotFoundError`` AFTER a green probe, so the audit row reports
+    the generic "outbound TLC bloqueado" message and downstream tasks
+    skip via UPSTREAM_FAILED — see #06 Fix #4).
+
+    Idempotent: ``IF NOT EXISTS`` on both statements. Cheap to run
+    every launch.
+    """
+    base = parse_volume_base(params.landing_volume_path)
+    session.sql(f"CREATE SCHEMA IF NOT EXISTS {base.catalog}.{base.schema}")
+    session.sql(f"CREATE VOLUME IF NOT EXISTS {base.catalog}.{base.schema}.{base.volume}")
+
+
 def _audit_row_to_spark_row(row: LandingAuditRow) -> dict[str, Any]:
     """Serialise an audit row into a dict ready for ``createDataFrame``."""
     return {
@@ -297,15 +322,88 @@ def _audit_row_to_spark_row(row: LandingAuditRow) -> dict[str, Any]:
     }
 
 
+def _landing_audit_spark_schema() -> StructType:
+    """Build the ``StructType`` mirroring ``LANDING_AUDIT_CREATE_TABLE_SQL``.
+
+    Spark Connect (serverless runtime) refuses to infer the dataframe
+    schema when a column is fully NULL — and ``pipeline_update_id`` is
+    always ``None`` at landing time (the SQL backfill task fills it
+    post-DLT, ADR-0008). ``error_message`` and ``probe_results[*].http_code``
+    can also be ``None`` for some outcomes. Passing an explicit schema
+    sidesteps the inference and matches the Delta table DDL one-to-one.
+
+    Kept private and built lazily so the module stays importable in
+    plain pytest (pyspark.sql.types is a pyspark-only dependency).
+    """
+    from pyspark.sql.types import (
+        ArrayType,
+        IntegerType,
+        LongType,
+        StringType,
+        StructField,
+        StructType,
+        TimestampType,
+    )
+
+    probe_struct = StructType(
+        [
+            StructField("month", StringType(), nullable=False),
+            StructField("probe_status", StringType(), nullable=False),
+            # ADR-0002: TIMEOUT / CONN_ERR carry no HTTP code.
+            StructField("http_code", IntegerType(), nullable=True),
+        ]
+    )
+
+    # Order MUST match LANDING_AUDIT_COLUMNS (ADR-0008). Nullability
+    # mirrors the DDL: pipeline_update_id and error_message are the
+    # only top-level NULLable columns; the array columns are required
+    # but their elements default to non-null.
+    return StructType(
+        [
+            StructField("run_id", StringType(), nullable=False),
+            StructField("job_run_id", StringType(), nullable=False),
+            StructField("job_url", StringType(), nullable=False),
+            StructField("pipeline_update_id", StringType(), nullable=True),
+            StructField("job_start_ts", TimestampType(), nullable=False),
+            StructField("job_end_ts", TimestampType(), nullable=False),
+            StructField("source_mode", StringType(), nullable=False),
+            StructField(
+                "probe_results", ArrayType(probe_struct, containsNull=False), nullable=False
+            ),
+            StructField("start_year_month", StringType(), nullable=False),
+            StructField("end_year_month", StringType(), nullable=False),
+            StructField(
+                "months_requested", ArrayType(StringType(), containsNull=False), nullable=False
+            ),
+            StructField(
+                "months_downloaded", ArrayType(StringType(), containsNull=False), nullable=False
+            ),
+            StructField(
+                "months_skipped", ArrayType(StringType(), containsNull=False), nullable=False
+            ),
+            StructField(
+                "months_failed", ArrayType(StringType(), containsNull=False), nullable=False
+            ),
+            StructField("bytes_downloaded", LongType(), nullable=False),
+            StructField("bytes_total_in_volume", LongType(), nullable=False),
+            StructField("status", StringType(), nullable=False),
+            StructField("error_message", StringType(), nullable=True),
+        ]
+    )
+
+
 def _write_audit_row(  # pragma: no cover - IO
     session: SparkSession, params: JobParams, row: LandingAuditRow
 ) -> None:
-    """Append a single row to ``landing_audit``."""
+    """Append a single row to ``landing_audit``.
+
+    Uses an explicit schema (see :func:`_landing_audit_spark_schema`)
+    because Spark Connect on the serverless runtime fails inference
+    when any column in the single input row is ``None`` (notably
+    ``pipeline_update_id`` and ``error_message`` on the SUCCESS path).
+    """
     payload = _audit_row_to_spark_row(row)
-    df = session.createDataFrame([payload])  # schema inferred from the dict
-    # Re-cast through the existing table's schema so type widening
-    # surprises (e.g. INT vs BIGINT) fail loudly instead of silently
-    # mismatching what the table expects.
+    df = session.createDataFrame([payload], schema=_landing_audit_spark_schema())
     df.write.mode("append").saveAsTable(_audit_table_fqn(params))
 
 
@@ -356,6 +454,7 @@ def main() -> int:  # pragma: no cover - notebook-only orchestration
     if session is None:
         raise RuntimeError("Spark session not available — run inside Databricks")
     _ensure_audit_table(session, params)
+    _ensure_landing_volume(session, params)
 
     job_start = datetime.now(UTC)
     outcomes: list[MonthOutcome] = []
@@ -393,8 +492,17 @@ def main() -> int:  # pragma: no cover - notebook-only orchestration
     print(f"[landing] audit row written: status={row.status}")
 
     # Surface FAILED to the Databricks task UI so an operator sees red.
-    return 1 if row.status == "FAILED" else 0
+    # Notebook tasks treat ANY ``sys.exit`` (including ``sys.exit(0)``)
+    # as a workload failure — they expect either natural cell completion
+    # or ``dbutils.notebook.exit()``. So on the SUCCESS / PARTIAL path
+    # we just return normally; on FAILED we raise so the task goes red
+    # with the audit-row error message attached to the traceback.
+    if row.status == "FAILED":
+        raise RuntimeError(
+            f"landing failed: {row.error_message or 'all months failed'}"
+        )
+    return 0
 
 
 if __name__ == "__main__":  # pragma: no cover - notebook entrypoint
-    sys.exit(main())
+    main()

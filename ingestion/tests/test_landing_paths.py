@@ -14,7 +14,9 @@ import pytest
 
 from nyc_taxi_case.landing_paths import (
     InvalidVolumeBaseError,
+    VolumeBase,
     build_volume_object_path,
+    parse_volume_base,
     parse_volume_object_path,
 )
 from nyc_taxi_case.window import InvalidYearMonthError
@@ -108,3 +110,46 @@ class TestParseVolumeObjectPath:
     @pytest.mark.parametrize("path", ["", None])
     def test_empty_or_none_returns_none(self, path: object) -> None:
         assert parse_volume_object_path(path) is None  # type: ignore[arg-type]
+
+
+# --------------------------------------------------------------------------- #
+# parse_volume_base
+# --------------------------------------------------------------------------- #
+class TestParseVolumeBase:
+    """``(/Volumes/<cat>/<schema>/<vol>[/...])`` → ``VolumeBase``."""
+
+    def test_canonical_landing_base_decomposes_to_three_parts(self) -> None:
+        assert parse_volume_base("/Volumes/workspace/nyc_taxi_bronze/landing/yellow") == (
+            VolumeBase(catalog="workspace", schema="nyc_taxi_bronze", volume="landing")
+        )
+
+    def test_trailing_slash_tolerated(self) -> None:
+        assert parse_volume_base("/Volumes/workspace/nyc_taxi_bronze/landing/").volume == "landing"
+
+    def test_bare_three_segment_path_is_enough(self) -> None:
+        # /Volumes/<cat>/<schema>/<volume> with no subpath is the minimal
+        # valid form — landing.py builds it for catalog-only DDL too.
+        assert parse_volume_base("/Volumes/c/s/v") == VolumeBase(
+            catalog="c", schema="s", volume="v"
+        )
+
+    @pytest.mark.parametrize("base", ["", "   "])
+    def test_empty_or_blank_raises(self, base: str) -> None:
+        with pytest.raises(InvalidVolumeBaseError, match="non-empty"):
+            parse_volume_base(base)
+
+    def test_non_uc_prefix_raises(self) -> None:
+        with pytest.raises(InvalidVolumeBaseError, match="/Volumes/"):
+            parse_volume_base("/dbfs/workspace/nyc_taxi_bronze/landing/yellow")
+
+    @pytest.mark.parametrize(
+        "base",
+        [
+            "/Volumes/workspace",
+            "/Volumes/workspace/nyc_taxi_bronze",
+            "/Volumes/workspace/nyc_taxi_bronze/",
+        ],
+    )
+    def test_fewer_than_three_segments_raises(self, base: str) -> None:
+        with pytest.raises(InvalidVolumeBaseError, match="catalog.*schema.*volume"):
+            parse_volume_base(base)
