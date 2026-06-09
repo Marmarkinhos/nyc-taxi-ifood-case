@@ -136,6 +136,16 @@ resources:
             warehouse_id: ${var.sql_warehouse_id}
             file:
               path: ../ingestion/sql/update_landing_audit.sql
+            # Named-parameter binding consumed by the SQL file as
+            # ``:job_run_id``. This is the documented surface for
+            # parameterising ``sql_task.file`` queries — dynamic-value
+            # references like ``{{job.run_id}}`` are substituted ONLY
+            # in YAML task-configuration fields (here), NEVER inside
+            # the SQL body itself. Surfaced during validation of
+            # ticket #15; see the long comment in
+            # ``update_landing_audit.sql`` for the why.
+            parameters:
+              job_run_id: "{{job.run_id}}"
 
       # ------------------------------------------------------------------
       # Compute environments (serverless only — Free Edition constraint)
