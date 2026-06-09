@@ -207,3 +207,124 @@ Validate confirma resolução pra path absoluto correto:
 `/Workspace/Users/<user>/.bundle/nyc-taxi-case/user_dev/files/dist/
 nyc_taxi_case-0.1.0-py3-none-any.whl`. Pendente HITL: re-run do
 `bundle deploy` + `bundle run job_ingestion`.
+
+### Fix #2 (2026-06-09) — wheel uploaded em path errado
+
+**Sintoma:** após Fix #1, `bundle run` (job run 399355919004015)
+falhou no `landing_task` com
+`Library installation failed ... ERROR_NO_SUCH_FILE_OR_DIRECTORY` no
+path `/Workspace/Users/.../files/dist/nyc_taxi_case-0.1.0-py3-none-any.whl`.
+
+**Diagnose:** `bundle deploy --debug` revelou que o CLI faz
+`POST /api/2.0/workspace-files/import-file` pra
+`${workspace.artifact_path}/.internal/<wheel>` (NÃO
+`${workspace.file_path}/dist/`). O comentário que eu havia escrito no
+`databricks.yml` documentando o path estava correto, mas o
+`dependencies` no job/pipeline YAML referenciava `file_path` — onde
+só vão arquivos do `sync.include`, não `type: whl` artifacts.
+
+**Fix:** trocado em `resources/job_ingestion.yml` (linha 138) e
+`resources/dlt_pipeline.yml` (linha 60):
+
+```yaml
+# antes
+- ${workspace.file_path}/dist/nyc_taxi_case-0.1.0-py3-none-any.whl
+# depois
+- ${workspace.artifact_path}/.internal/nyc_taxi_case-0.1.0-py3-none-any.whl
+```
+
+Pós-deploy confirmado via `workspace list`: wheel está em
+`/Workspace/Users/<user>/.bundle/nyc-taxi-case/user_dev/artifacts/.internal/`.
+
+### Fix #3 (2026-06-09) — `_write_audit_row` falha em Spark Connect
+
+**Sintoma:** com o wheel finalmente instalado, `landing_task` rodou
+até o `_write_audit_row` e falhou com
+`PySparkValueError: [CANNOT_DETERMINE_TYPE]`. Spark Connect (runtime
+serverless) recusa inferir schema quando uma coluna do row de input
+é `None` — e `pipeline_update_id` é sempre `None` no landing (o SQL
+backfill task preenche pós-DLT, ADR-0008). `error_message` também é
+`None` no caminho SUCCESS, e `probe_results[*].http_code` pode ser
+`None` em probes `TIMEOUT`/`CONN_ERR`.
+
+**Fix:** `ingestion/landing.py` ganhou helper
+`_landing_audit_spark_schema()` que constrói explicitamente o
+`StructType` espelhando `LANDING_AUDIT_CREATE_TABLE_SQL` (ADR-0008),
+e `_write_audit_row` passa esse schema explícito pro
+`createDataFrame`. Sem regression test unitário porque pyspark não é
+dev dep local — a seam de regressão é o próprio
+`bundle run job_ingestion`.
+
+### Fix #4 (2026-06-09) — Landing schema/Volume não existem
+
+**Sintoma:** após Fix #3 o wheel install + audit row gravavam OK,
+mas todos os 5 meses caíam em `status=FAILED` mesmo com **probe
+HEAD respondendo 200 OK pra todos** (`probe_results` da audit row
+confirmou). A `error_message` genérica ("outbound TLC bloqueado")
+do `_status_and_error` foi enganosa — não era bloqueio de rede.
+
+**Diagnose:** `SHOW SCHEMAS IN workspace` mostrou que o schema
+`nyc_taxi_bronze` **não existia** (só `aquarela`, `default`,
+`information_schema`, `nyc_taxi_monitoring`). Sem schema, sem
+Volume `landing`, então `os.makedirs(/Volumes/workspace/
+nyc_taxi_bronze/landing/yellow/year=...)` em `_download_to_volume`
+falhava com FileNotFoundError, era catched pelo
+`except Exception` (linha 216 do landing.py), logado em
+`sys.stderr` (que NÃO vem pela jobs API) e demoted pra `FAILED`.
+
+PLAN.md §setup tinha uma linha "criar Volume" como step manual,
+nunca executado nesse workspace. Nenhum ticket criou o
+schema/Volume programaticamente — gap no plano.
+
+**Fix:**
+
+1. `src/nyc_taxi_case/landing_paths.py` ganhou `VolumeBase` +
+   `parse_volume_base(base)` que decompõe `/Volumes/<cat>/<schema>/
+   <volume>[/...]` no triple UC. 9 testes novos cobrindo path
+   canônico, trailing slash, e erros (vazio, prefixo errado, poucos
+   segmentos).
+2. `ingestion/landing.py` ganhou `_ensure_landing_volume(session,
+   params)`, idempotente (`CREATE SCHEMA IF NOT EXISTS` +
+   `CREATE VOLUME IF NOT EXISTS`), chamado em `main()` logo após
+   `_ensure_audit_table`. Espelha o pattern já existente pro
+   audit schema.
+
+### Fix #5 (2026-06-09) — `sys.exit` em notebook task
+
+**Sintoma:** após Fix #4 o landing rodou e gravou audit com
+`status=SUCCESS` e `bytes_downloaded=264_426_470`, mas o task ainda
+apareceu como FAILED no DAB com `SystemExit: 0`. Causa: notebook
+tasks tratam qualquer `sys.exit(N)` (mesmo `sys.exit(0)`) como
+workload failure — eles esperam terminação natural via cell
+completion ou `dbutils.notebook.exit()`.
+
+**Fix:** trocado `sys.exit(main())` por `main()` no entry-point, e
+`main()` agora `raise RuntimeError(...)` em FAILED (única forma de
+sinalizar erro num notebook task) ao invés de `return 1`. SUCCESS/
+PARTIAL retorna naturalmente.
+
+### HITL gates pós-Fix #2 a #5 (run 946275077691272)
+
+- ✅ `bundle deploy --target user_dev` sobe wheel + recursos.
+- ✅ `landing_task` **SUCCESS** end-to-end:
+  - Wheel instalado (Fix #2)
+  - Audit schema + table criados, row gravada com schema explícito
+    (Fix #3)
+  - Landing schema + Volume bootstrap automático (Fix #4)
+  - 5/5 meses baixados (~252 MiB, jan-mai 2023 confirmado via
+    `SELECT status, bytes_downloaded, months_downloaded FROM
+    landing_audit`)
+  - Task termina verde sem SystemExit espúrio (Fix #5)
+- ❌ `dlt_pipeline_task` falha com `[DELTA_FEATURES_REQUIRE_MANUAL_
+  ENABLEMENT] timestampNtz` — Auto Loader infere `TIMESTAMP_NTZ`
+  pros campos `tpep_pickup_datetime` / `tpep_dropoff_datetime` (TLC
+  parquet schema) mas a Delta default no Free Edition não habilita
+  esse feature. **Problema do ticket #04 (DLT Bronze)**, não #06.
+  Reabrir #04 ou abrir ticket dedicado com:
+  - Opção A: forçar `TIMESTAMP` (com tz) via cast na Bronze.
+  - Opção B: `tblproperties={"delta.feature.timestampNtz":
+    "supported"}` no `@dlt.table` decorator (ou via
+    `spark.conf.set("spark.databricks.delta.properties.defaults.
+    feature.timestampNtz", "supported")` no top do pipeline).
+- ⏳ `update_audit_task` (`pipeline_update_id` backfill) bloqueado em
+  UPSTREAM_FAILED até #04 destravado.

@@ -45,3 +45,4 @@ Decisões arquiteturais load-bearing do case, em ordem cronológica.
 | [0009](./0009-dim-locations-dentro-do-escopo.md) | `dim_locations` como seed dbt (editado pt4) | Accepted |
 | [0010](./0010-fronteira-ingestao-modelagem-na-silver.md) | Fronteira ingestão↔modelagem na Silver canônica | Accepted |
 | [0011](./0011-orquestracao-dois-jobs-dab-independentes.md) | Orquestração: 2 jobs DAB independentes sem `depends_on` | Accepted |
+| [0012](./0012-landing-notebook-self-bootstrap.md) | Landing notebook self-bootstrap (schema + Volume + exit protocol) | Accepted |

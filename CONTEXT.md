@@ -90,6 +90,24 @@ contrato. Espelha o padrão iFood (`ifp-data-ingestions` DLT-puro +
   #6a).
 - **Free Edition** — Databricks gratuito, serverless-only, sem SP, outbound restrita
 - **Audit table** — `${prefix}monitoring.landing_audit`, cobre gap pre-Bronze
+- **Self-bootstrap** — princípio do landing notebook (ADR-0012): garante
+  todas as suas pré-condições UC via `CREATE SCHEMA IF NOT EXISTS` +
+  `CREATE VOLUME IF NOT EXISTS` idempotentes (`_ensure_audit_table` +
+  `_ensure_landing_volume` no `main()`). Zero setup HITL num workspace
+  fresh — `bundle run` é one-shot.
+- **Notebook task exit protocol** — notebook tasks tratam **qualquer**
+  `sys.exit(N)` (mesmo `0`) como workload failure. Convenção do projeto:
+  SUCCESS/PARTIAL termina naturalmente via `main()` (sem `sys.exit`);
+  FAILED faz `raise RuntimeError(error_message)` pra surfar traceback
+  no UI. Detalhe em ADR-0012.
+- **DAB artifact paths** — duas localizações distintas no workspace
+  após `bundle deploy`, fácil de confundir:
+  - `${workspace.file_path}/` — source tree (`sync.include`), onde
+    notebooks `.py` e SQL files aterram.
+  - `${workspace.artifact_path}/.internal/` — `type: whl` / `type: jar`
+    artifacts. Wheel do `nyc_taxi_case` vive aqui; `dependencies` nos
+    blocos `environments` / `environment` precisam apontar pra cá
+    (não pra `file_path/dist/`). ADR-0012.
 - **Trio de consumo** — modelos dbt em `dbt/models/analyses/` (SSoT) +
   notebook `answers.py` (orquestra `display()` dos modelos via
   `spark.read.table`) + AI/BI dashboard `.lvdash.json` (referencia
@@ -165,3 +183,10 @@ Reorientação arquitetural pt3 materializada em ADRs (pt4):
   (`job_ingestion` + `job_dbt`), sem `depends_on` cross-job.
   Contrato implícito via `sources.yml`. Monorepo é decisão de UX
   do avaliador (nota README), não decisão arquitetural.
+
+Aprendizado operacional pós-primeiro run end-to-end (pt5):
+- **ADR-0012:** landing notebook é self-bootstrap (cria seu schema +
+  Volume idempotentes; respeita exit protocol do notebook task;
+  `dependencies` da env apontam pra `${workspace.artifact_path}/.internal/`
+  e não pra `${workspace.file_path}/dist/`). Consolida Fixes #2-#5
+  do ticket #06.
