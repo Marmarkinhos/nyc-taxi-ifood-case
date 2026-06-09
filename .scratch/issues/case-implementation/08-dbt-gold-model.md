@@ -1,6 +1,7 @@
 ---
-status: ready-for-agent
+status: done
 created: 2026-06-08
+closed: 2026-06-09
 tags: [dbt, gold, model, enrichment]
 blocked-by: [07-dbt-project-skeleton.md]
 blocks: [09-dbt-tests.md, 10-job-dbt-dab.md, 11-dbt-analyses.md]
@@ -78,3 +79,40 @@ principal do case. Materialização default `view` (ADR-0011 §notas).
 
 - `07-dbt-project-skeleton.md` (precisa de `sources.yml` +
   `dim_locations` seedado)
+
+## Resolution (2026-06-09)
+
+Entregue end-to-end. Modelo em
+`dbt/models/gold/yellow_taxi_trips_consumption.sql`, materializado em
+`workspace.nyc_taxi_gold.yellow_taxi_trips_consumption` (view).
+
+**Validação:**
+
+| Critério | Resultado |
+|---|---|
+| Materializa como view | ✅ |
+| `dbt run --select yellow_taxi_trips_consumption` | ✅ 5.01s |
+| Filtra por janela do último run completo | ✅ jan-mai 2023 |
+| First-run vazio → hard-fail acionável | ✅ validado no compile |
+| `pickup_borough` / `dropoff_borough` 100% non-null | ✅ 16.044.080/16.044.080 |
+| Row count Gold == Silver filtrada | ✅ ambos 16.044.080 |
+| Default `view` (sem `+materialized` override) | ✅ |
+| Sem hardcode de start/end | ✅ via `latest_complete_run` CTE |
+
+**Decisão refinada durante implementação:**
+
+- `ref('dim_locations')` **não funciona** — dbt resolve `ref()` por
+  node name (`taxi_zone_lookup`), não por alias. Modelo usa
+  `ref('taxi_zone_lookup')` com comentário explicativo inline.
+
+**Bug descoberto + workaround aplicado:**
+
+`landing.py:_resolve_job_context()` retorna `"interactive"` mesmo
+quando rodado via `bundle run job_ingestion`, fazendo a task 3
+(`update_audit_task`) não conseguir backfillar `pipeline_update_id`
+(filtro `WHERE job_run_id = '{{job.run_id}}'` não casa com
+`"interactive"`). Bug não bloqueou o #08: backfillei manualmente
+via SQL `UPDATE`, depois rodei `dbt run` com sucesso. Bug registrado
+em ticket **#15** (`15-resolve-job-context-bug.md`), que bloqueia
+#10 (`job_dbt` precisa do contrato funcionando sem UPDATE manual).
+
