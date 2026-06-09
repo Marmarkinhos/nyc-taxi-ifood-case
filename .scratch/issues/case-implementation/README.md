@@ -19,7 +19,7 @@ Implementação completa do case NYC Yellow Taxi, quebrada via skill
 | [03](./03-landing-notebook.md) | Landing notebook + `landing_audit` | `done` ✅ | AFK | #02 |
 | [04](./04-dlt-bronze-silver-canonica.md) | DLT Bronze + Silver canônica | `done` ✅ | AFK | #03 |
 | [05](./05-dlt-expectations.md) | DLT expectations (6 Silver + 1 Bronze warn) | `done` ✅ | AFK | #04 |
-| [06](./06-job-ingestion-dab.md) | `job_ingestion` DAB | `ready-for-agent` | AFK | #04 |
+| [06](./06-job-ingestion-dab.md) | `job_ingestion` DAB | `done` ✅ | AFK | #04 |
 | [07](./07-dbt-project-skeleton.md) | dbt project + `sources.yml` + seed dim | `ready-for-agent` | AFK | #06 |
 | [08](./08-dbt-gold-model.md) | dbt Gold model + filtro janela + enrichment | `ready-for-agent` | AFK | #07 |
 | [09](./09-dbt-tests.md) | dbt tests (4 inventariados) | `ready-for-agent` | AFK | #08 |
