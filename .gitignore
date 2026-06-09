@@ -12,6 +12,9 @@ dist/
 # Databricks
 .databricks/
 
+# Editor-local (auto-created by `databricks bundle validate` / similar)
+.vscode/
+
 # OS
 .DS_Store
 Thumbs.db
