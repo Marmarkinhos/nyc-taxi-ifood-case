@@ -1,0 +1,54 @@
+# databricks.yml — monorepo root bundle.
+#
+# Two independent DAB jobs live under `resources/`:
+#   - job_ingestion (DLT + Auto Loader): landing -> bronze -> silver
+#   - job_dbt       (dbt-databricks):    silver  -> gold + analyses
+#
+# They do NOT declare cross-job depends_on. Contract between them is
+# `dbt/models/sources.yml` pointing at the Silver canonical table.
+# See ADR-0011.
+#
+# Schedules are paused in every target. Execution is manual:
+#   databricks bundle run job_ingestion --profile free-edition
+#   databricks bundle run job_dbt       --profile free-edition
+#
+# `databricks bundle validate` works offline (schema check only); deploy
+# requires a real workspace + PAT (Free Edition: no service principal).
+
+bundle:
+  name: nyc-taxi-case
+
+include:
+  - resources/*.yml
+
+# ---------------------------------------------------------------------------
+# Targets
+# ---------------------------------------------------------------------------
+targets:
+
+  # Personal dev target on the Free Edition workspace. Default for
+  # `bundle run` / `bundle deploy` so a stray invocation hits dev, not
+  # a hypothetical production.
+  user_dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://dbc-88968762-8346.cloud.databricks.com
+    variables:
+      # Free Edition has a single MANAGED catalog called `workspace`.
+      catalog: workspace
+      # Personal prefix keeps schemas scoped per user when multiple
+      # devs share one catalog. Empty here because the Free Edition
+      # workspace is single-tenant; left wired so the lever exists.
+      catalog_prefix: ""
+
+  # Placeholder shape for a hypothetical production deployment. Kept
+  # so `bundle validate --target prod` exercises the target wiring;
+  # NOT used at runtime (Free Edition cannot deploy via SP anyway).
+  prod:
+    mode: production
+    workspace:
+      host: https://example-prod.cloud.databricks.com
+    variables:
+      catalog: workspace
+      catalog_prefix: ""

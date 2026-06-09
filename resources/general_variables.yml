@@ -1,0 +1,71 @@
+# resources/general_variables.yml
+#
+# Shared variables consumed by both job_ingestion and job_dbt DABs.
+# Single source of truth for catalog/schema/Volume layout — every
+# resource YAML in this repo must reference these via ${var.*}.
+#
+# Target overrides live in databricks.yml under `targets.<name>.variables`.
+# Default values here describe a personal dev workspace
+# (catalog_prefix = "" + Free Edition `workspace` catalog).
+#
+# CONTEXT.md vocabulary mapping:
+#   - Landing  ->  Volume UC at ${var.landing_volume_path}
+#   - Bronze   ->  ${var.catalog}.${var.bronze_schema}.yellow_taxi_trips_raw
+#   - Silver   ->  ${var.catalog}.${var.silver_schema}.yellow_taxi_trips
+#   - Gold     ->  ${var.catalog}.${var.gold_schema}.yellow_taxi_trips_consumption
+#   - Audit    ->  ${var.catalog}.${var.monitoring_schema}.landing_audit
+
+variables:
+  catalog:
+    description: >-
+      Unity Catalog catalog. Free Edition only has `workspace` MANAGED;
+      production hypothetical would override per target.
+    default: workspace
+
+  catalog_prefix:
+    description: >-
+      Optional prefix for schema names so multiple devs can share one
+      catalog (`marcos_nyc_taxi_silver` vs `nyc_taxi_silver`). Empty in
+      production-shaped targets; set per user in user_dev.
+    default: ""
+
+  bronze_schema:
+    description: Bronze schema name (Streaming Table layer).
+    default: nyc_taxi_bronze
+
+  silver_schema:
+    description: Silver schema name (Materialized View, canonical/typed).
+    default: nyc_taxi_silver
+
+  gold_schema:
+    description: Gold schema name (dbt-owned consumption layer).
+    default: nyc_taxi_gold
+
+  monitoring_schema:
+    description: Monitoring schema (landing_audit lives here).
+    default: nyc_taxi_monitoring
+
+  landing_volume_name:
+    description: >-
+      Volume UC name under ${var.catalog}.${var.bronze_schema}. Holds
+      raw TLC parquets in Hive-partitioned `year=YYYY/month=MM/` layout
+      (Landing layer — byte-a-byte fidelity vs TLC CloudFront).
+    default: landing
+
+  landing_volume_path:
+    description: >-
+      Full Volume path the Landing notebook downloads into and Auto
+      Loader reads from. Keep in sync with landing_volume_name.
+    default: /Volumes/${var.catalog}/${var.bronze_schema}/landing/yellow
+
+  start_year_month:
+    description: >-
+      Default start of ingestion window (inclusive). Case scope is
+      Jan-May 2023; override per run via `bundle run --params`.
+    default: "2023-01"
+
+  end_year_month:
+    description: >-
+      Default end of ingestion window (inclusive). Case scope is
+      Jan-May 2023; override per run via `bundle run --params`.
+    default: "2023-05"
