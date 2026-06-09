@@ -46,3 +46,6 @@ Decisões arquiteturais load-bearing do case, em ordem cronológica.
 | [0010](./0010-fronteira-ingestao-modelagem-na-silver.md) | Fronteira ingestão↔modelagem na Silver canônica | Accepted |
 | [0011](./0011-orquestracao-dois-jobs-dab-independentes.md) | Orquestração: 2 jobs DAB independentes sem `depends_on` | Accepted |
 | [0012](./0012-landing-notebook-self-bootstrap.md) | Landing notebook self-bootstrap (schema + Volume + exit protocol) | Accepted |
+| [0013](./0013-timestampntz-feature-flag.md) | Habilitar `delta.feature.timestampNtz` em Bronze e Silver | Accepted |
+| [0014](./0014-bronze-schema-hints-e-rescued-data-expectation.md) | Bronze `cloudFiles.schemaHints` + expectation `bronze_no_rescued_data` | Superseded em parte por ADR-0015 |
+| [0015](./0015-bronze-type-widening-e-silver-rescued-recovery.md) | Bronze `addNewColumnsWithTypeWidening` + Silver `_rescued_data` recovery | Accepted |
