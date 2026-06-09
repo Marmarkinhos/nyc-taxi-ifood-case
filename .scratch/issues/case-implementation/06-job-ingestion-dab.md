@@ -490,5 +490,21 @@ na audit table, e alerting job-level. Fora do escopo de Fix #7.
     `_rescued_data` Bronze feb-mai continua 100 % populado (só
     `passenger_count`/`RatecodeID` no JSON agora), e isso é
     correto: schema-drift detector permanece loud, Silver recupera.
+- ✅ Fix #10 (2026-06-09): `passenger_count_in_range` movida de
+  `@dlt.expect_all_or_drop` pra `@dlt.expect_all` (warn-only).
+  Diagnose dessa sessão provou que os 428K drops remanescentes pós
+  Fix #9 são `passenger_count` NULL **na origem TLC** (driver entry
+  omission) — não recuperáveis nem via `_rescued_data`. Query de
+  validação: 71743 + 76817 + 87619 + 90690 + 101796 = 428.665 rows
+  com NULL em col typed E JSON `_rescued_data.passenger_count`.
+  Decisão (ADR-0016): manter essas rows na Silver pra preservar
+  `fare_amount`/`total_amount`/`pu_location_id`/`do_location_id`
+  pras Q1/Q3/Q4 do case; análises de Q2 (passenger_count por hora
+  em maio) filtram explicitamente `WHERE passenger_count IS NOT NULL`
+  no dbt. Update `2811b96d-9440-4f6d-bdc3-a12c0730b7dd` COMPLETED.
+  Validação: Silver 15.62M → **16.04M rows** (jan 3.04M, feb 2.89M,
+  mar 3.37M, abr 3.26M, mai 3.48M). 3 expectations seguem em
+  `or_drop` (refunds, timestamps NULL, dropoff invertido — todas
+  corromperiam métricas se passassem).
 - ⏳ `update_audit_task` (`pipeline_update_id` backfill) — agora
-  pode ser validado end-to-end (Fix #9 verde).
+  pode ser validado end-to-end (Fix #9 + #10 verdes).

@@ -116,6 +116,22 @@ que se parece com um destes, confirme se já não é um deles.
   `_rescued_data` 100 % populado em todos os meses que ship
   `Airport_fee` CamelCase. Investigação completa em ADR-0014
   §"Follow-up correction".
+- **`or_drop` é decisão de severidade, NÃO de "qualidade pura"** (Fix
+  #10 / ADR-0016) — drop fazia sentido quando a regra capturava
+  corrupção real (refunds em métrica de receita, timestamps NULL).
+  Não fazia pra `passenger_count BETWEEN 0 AND 9`: 428K rows tinham
+  `passenger_count` NULL nativo TLC (driver entry omission, ~2.6% do
+  dataset, não recuperáveis nem via `_rescued_data` porque o JSON
+  também está vazio nessas rows). Dropar a row inteira destruía
+  fare/distance/location válidos pras outras perguntas do case (Q1,
+  Q3, Q4). Critério reusável: **drop só quando manter a row corromperia
+  uma resposta**; warn quando o problema é ortogonal às outras colunas.
+  Query de validação que prova "não recuperável" (NULL na col E no JSON):
+  `SUM(CASE WHEN passenger_count IS NULL AND (get_json_object(_rescued_data, '$.passenger_count') IS NULL OR get_json_object(_rescued_data, '$.passenger_count') = 'null') THEN 1 ELSE 0 END)`.
+  Pattern de armadilha em diagnose: ao investigar drops de
+  expectation que casa com `_rescued_data` populado, **sempre** rode
+  essa query antes de assumir "tem bug no coalesce" — pode ser NULL
+  nativo da fonte.
 - **`cloudFiles.schemaHints` DESABILITA type widening na coluna
   hinted; LONG↔DOUBLE não é widening em nenhum lugar** (Fix #9 /
   ADR-0015) — hipótese original do ADR-0014 ("rescue feb-mai é tudo

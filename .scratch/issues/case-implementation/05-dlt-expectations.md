@@ -25,7 +25,7 @@ schema é protegido por pytest CI + warn na Bronze.
 | # | Regra | Coluna(s) | Severidade | Razão |
 |---|---|---|---|---|
 | 1 | `vendor_id IN (1, 2, 6, 7)` | `vendor_id` | `expect` (warn) | Dicionário TLC; observa drift. Redundante intencional com dbt test (ticket #9). |
-| 2 | `passenger_count BETWEEN 0 AND 9` | `passenger_count` | `expect_or_drop` | Pergunta 2 = média; lixo enviesa. |
+| 2 | `passenger_count BETWEEN 0 AND 9` | `passenger_count` | `expect` (warn) — **ADR-0016** | 428K NULL nativo TLC; manter rows preserva fare/distance/location pras Q1/Q3/Q4. Análise de Q2 (#11) filtra `IS NOT NULL`. |
 | 3 | `total_amount >= 0` | `total_amount` | `expect_or_drop` | Pergunta 1 = média; refunds enviesam. |
 | 4 | `tpep_pickup_datetime IS NOT NULL AND tpep_dropoff_datetime IS NOT NULL` | timestamps | `expect_or_drop` | Sem pickup → sem partição válida. |
 | 5 | `tpep_dropoff_datetime >= tpep_pickup_datetime` | timestamps | `expect_or_drop` | Corrupção; dropa. |
@@ -40,10 +40,11 @@ ticket #13).
 - [ ] 7 expectations declaradas via `@dlt.expect_*` decorators
 - [ ] Nenhuma é `expect_or_fail` (verificável por grep no código)
 - [ ] Expectation #7-bronze é warn-only e aplica em nível tabela
-- [ ] Expectations #2-5 são `expect_or_drop` (dropam linhas
-      inválidas)
-- [ ] Expectations #1 e #6a são `expect` (warn-only, preservam
-      linhas)
+- [ ] Expectations #3-5 são `expect_or_drop` (dropam linhas
+      que corromperiam métricas: refunds, timestamps NULL, dropoff
+      invertido)
+- [ ] Expectations #1, #2 e #6a são `expect` (warn-only, preservam
+      linhas — ADR-0016)
 - [ ] Métricas das expectations aparecem em `event_log("<pipeline_id>")`
       (`expectation_metrics`)
 - [ ] Re-run do pipeline com parquet contendo `passenger_count=99`

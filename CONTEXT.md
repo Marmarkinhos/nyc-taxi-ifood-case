@@ -116,8 +116,12 @@ contrato. Espelha o padrão iFood (`ifp-data-ingestions` DLT-puro +
   seção "Camada de consumo").
 - **Expectations** — 7 total (6 na Silver + 1 na Bronze); **nenhuma**
   é `expect_or_fail` em Free Edition (blast radius > sinal — ADR-0007).
-  Contrato de schema TLC é protegido por `ingestion/tests/test_schema.py`
-  (CI) + warn-only na Bronze.
+  Severidade refinada per ADR-0016: drop **só quando manter a row
+  corromperia uma resposta** (refunds em Q1, timestamps NULL, dropoff
+  invertido); warn quando o problema é ortogonal às outras colunas
+  (`passenger_count_in_range`, `vendor_id_in_dictionary`,
+  `pickup_month_matches_file`). Contrato de schema TLC é protegido por
+  `ingestion/tests/test_schema.py` (CI) + warn-only na Bronze.
 - **dbt tests** — testes idiomáticos dbt rodando no `job_dbt`,
   inventário fixo (ADR-0007 §Decision item 3):
   - `not_null` em 5 colunas exigidas do **source Silver**
@@ -201,3 +205,6 @@ Recovery de drift TLC (sessão pós-Fix #9):
   `_rescued_data` recovery via `coalesce(typed, get_json_object(...))`
   pra `passenger_count`/`RatecodeID` (type drift DOUBLE↔INT64 sem path
   de widening). Silver 2.97M → 15.62M rows (Fix #9).
+- **ADR-0016:** `passenger_count_in_range` movida pra warn (não drop)
+  pra preservar 428K rows com `passenger_count` NULL nativo TLC.
+  Silver 15.62M → **16.04M rows**.

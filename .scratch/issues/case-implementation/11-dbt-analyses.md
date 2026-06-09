@@ -35,13 +35,22 @@ ORDER BY pickup_year_month
 
 Pergunta 2 do case: "média de `passenger_count` por hora em Maio".
 
+**ATENÇÃO (ADR-0016):** filtrar `passenger_count IS NOT NULL`
+explicitamente. ~101K rows de maio têm `passenger_count` NULL nativo
+TLC (driver entry omission) e foram mantidas na Silver pra preservar
+fare/distance/location pras outras perguntas. `AVG(passenger_count)`
+já ignora NULL implicitamente, mas o `COUNT(*)` ficaria inflado vs o
+denominador real da média — usar `COUNT(passenger_count)` ou filtrar
+no WHERE.
+
 ```sql
 SELECT
   pickup_hour,
   AVG(passenger_count) AS avg_passenger_count,
-  COUNT(*) AS trip_count
+  COUNT(passenger_count) AS trip_count_with_passenger  -- não COUNT(*)
 FROM {{ ref('yellow_taxi_trips_consumption') }}
 WHERE pickup_year_month = '2023-05'
+  AND passenger_count IS NOT NULL  -- ADR-0016: explícito
 GROUP BY pickup_hour
 ORDER BY pickup_hour
 ```
