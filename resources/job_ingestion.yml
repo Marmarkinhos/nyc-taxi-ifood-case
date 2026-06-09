@@ -1,0 +1,130 @@
+# resources/job_ingestion.yml
+#
+# ``job_ingestion`` — the ingestion-side DAB job (ADR-0011).
+#
+# Three sequential tasks:
+#
+#   1. ``landing_task`` (notebook_task)
+#      Downloads TLC parquets into the Volume + writes the
+#      ``landing_audit`` row (with ``pipeline_update_id = NULL``).
+#      Implemented in ``ingestion/landing.py``; reads its parameters
+#      via ``dbutils.widgets`` (hence ``notebook_task`` rather than
+#      ``spark_python_task`` — the latter would force a CLI refactor).
+#
+#   2. ``dlt_pipeline_task`` (pipeline_task)
+#      Triggers the Lakeflow Declarative Pipeline defined in
+#      ``resources/dlt_pipeline.yml``. Auto Loader sees the parquets
+#      the previous step deposited and publishes Bronze + Silver.
+#      ``depends_on: landing_task``.
+#
+#   3. ``update_audit_task`` (sql_task)
+#      Backfills the ``pipeline_update_id`` column of the audit row
+#      created in step 1 with the just-completed pipeline update_id,
+#      sourced from the pipeline's ``event_log`` (event_type =
+#      'create_update', latest by timestamp). ``depends_on:
+#      dlt_pipeline_task``.
+#
+# This job does NOT reference ``job_dbt`` or ``dbt_task`` anywhere —
+# ADR-0011 ("2 jobs independentes, sem depends_on cross-job"). The
+# contract between ingestion and modelling is the Silver table, not
+# a job-level dependency.
+#
+# Schedule is paused in every target (ADR-0011). Execution is manual:
+#   databricks bundle run job_ingestion --target user_dev
+#
+# Variables are declared in ``resources/general_variables.yml``;
+# ``${var.*}`` is the only acceptable form (no hard-coded catalog or
+# schema names anywhere in this file).
+
+resources:
+  jobs:
+    job_ingestion:
+      name: "[${bundle.target}] nyc-taxi ingestion (landing → bronze → silver)"
+
+      # Schedule paused in every target (ADR-0011). The block is here
+      # so it shows up in the workspace UI as "scheduled but paused"
+      # rather than absent — easier to flip on later without editing
+      # the YAML.
+      schedule:
+        quartz_cron_expression: "0 0 6 * * ?"  # nominal: daily 06:00 UTC
+        timezone_id: UTC
+        pause_status: PAUSED
+
+      # Job-level parameters expose the ingestion window so the
+      # avaliador can override per run:
+      #   databricks bundle run job_ingestion \
+      #     --params start_year_month=2023-03,end_year_month=2023-03
+      # Defaults come from general_variables.yml.
+      parameters:
+        - name: start_year_month
+          default: ${var.start_year_month}
+        - name: end_year_month
+          default: ${var.end_year_month}
+
+      tasks:
+
+        # --------------------------------------------------------------
+        # Task 1: landing — download TLC parquets + write audit row
+        # --------------------------------------------------------------
+        - task_key: landing_task
+          notebook_task:
+            notebook_path: ../ingestion/landing.py
+            # base_parameters become dbutils.widgets values inside the
+            # notebook. Keys must match _WIDGET_DEFAULTS in landing.py.
+            base_parameters:
+              start_year_month: "{{job.parameters.start_year_month}}"
+              end_year_month: "{{job.parameters.end_year_month}}"
+              catalog: ${var.catalog}
+              monitoring_schema: ${var.monitoring_schema}
+              landing_volume_path: ${var.landing_volume_path}
+          # Serverless compute via the environment_key pattern (Free
+          # Edition: no instance pools, no SP, no all-purpose cluster).
+          environment_key: serverless_default
+
+        # --------------------------------------------------------------
+        # Task 2: DLT pipeline — Bronze + Silver
+        # --------------------------------------------------------------
+        - task_key: dlt_pipeline_task
+          depends_on:
+            - task_key: landing_task
+          pipeline_task:
+            # Reference to the pipeline defined in
+            # resources/dlt_pipeline.yml. The ``.id`` substitution is
+            # resolved at ``bundle deploy`` time to the actual UC id.
+            pipeline_id: ${resources.pipelines.yellow_taxi_ingestion.id}
+            # full_refresh: false → incremental update; AvailableNow in
+            # the source means it picks up only new files.
+            full_refresh: false
+
+        # --------------------------------------------------------------
+        # Task 3: backfill pipeline_update_id on the audit row
+        # --------------------------------------------------------------
+        # ADR-0008 reserves landing_audit.pipeline_update_id for the
+        # just-completed DLT update_id. SQL kept as a separate file
+        # (``ingestion/sql/update_landing_audit.sql``) — catalog/schema
+        # are hard-coded in that file because DAB does not interpolate
+        # ${var.*} inside SQL bodies referenced by ``sql_task.file``.
+        # ``{{job.run_id}}`` IS substituted at execution time by the
+        # job runner (Jobs parameter system), so the row written by
+        # THIS run's landing task is the one we backfill.
+        #
+        # Mirrors the canonical ``ifp-data-ingestions`` pattern
+        # (landing notebook + pipeline_task + sql_task post-DLT).
+        - task_key: update_audit_task
+          depends_on:
+            - task_key: dlt_pipeline_task
+          sql_task:
+            warehouse_id: ${var.sql_warehouse_id}
+            file:
+              path: ../ingestion/sql/update_landing_audit.sql
+
+      # ------------------------------------------------------------------
+      # Compute environments (serverless only — Free Edition constraint)
+      # ------------------------------------------------------------------
+      # ``environments`` is the modern DAB block for serverless task
+      # compute; binds to tasks via ``environment_key``. ``spec`` is
+      # required even when empty (the schema demands a client version).
+      environments:
+        - environment_key: serverless_default
+          spec:
+            client: "2"

@@ -69,3 +69,13 @@ variables:
       Default end of ingestion window (inclusive). Case scope is
       Jan-May 2023; override per run via `bundle run --params`.
     default: "2023-05"
+
+  sql_warehouse_id:
+    description: >-
+      Databricks SQL Warehouse id used by `update_audit_task`
+      (`sql_task`) in `job_ingestion`. On Free Edition the workspace
+      auto-provisions a single "Serverless Starter Warehouse"; capture
+      its id once via the SQL Warehouses UI (Connection details) and
+      pin it per target. Empty default keeps `bundle validate` happy
+      offline; deploy requires a real id.
+    default: ""

@@ -1,0 +1,57 @@
+# resources/dlt_pipeline.yml
+#
+# Lakeflow Declarative Pipeline (formerly DLT) definition for the
+# Bronze + Silver tables published from ``ingestion/dlt_pipeline.py``.
+#
+# This file is INTENTIONALLY SEPARATE from ``job_ingestion.yml``:
+# a pipeline is a long-lived UC-bound resource (catalog/schema/storage
+# layout); a job is the trigger surface (schedule, tasks, parameters).
+# Splitting them lets the pipeline be referenced by id from the job
+# (``${resources.pipelines.yellow_taxi_ingestion.id}``) without the
+# job YAML having to know its internals — same pattern as
+# ``ifp-data-ingestions`` (ADR-0011).
+#
+# Serverless is mandatory on Free Edition (single MANAGED catalog
+# ``workspace``, no SP, no instance pools). The legacy ``clusters:``
+# block is omitted on purpose — Lakeflow allocates the runtime.
+#
+# Catalog / schema come from ``general_variables.yml`` so they stay
+# in sync with the dbt ``sources.yml`` (ticket #07) and the audit
+# table location (#03).
+
+resources:
+  pipelines:
+    yellow_taxi_ingestion:
+      name: "[${bundle.target}] nyc-taxi yellow ingestion"
+      # ``catalog`` is the UC catalog Lakeflow publishes the tables
+      # into; ``target`` (in Lakeflow vocabulary = schema name) is the
+      # Bronze schema. Silver tables declare their own schema via the
+      # ``schema`` argument in ``@dlt.table`` if needed; right now both
+      # Bronze and Silver live under the same target schema because the
+      # tables are namespaced by name (``yellow_taxi_trips_raw`` vs
+      # ``yellow_taxi_trips``). If we later split, this is the lever.
+      catalog: ${var.catalog}
+      target: ${var.bronze_schema}
+      serverless: true
+      # ``photon: true`` is implicit on serverless Lakeflow; do not set
+      # explicitly (rejected by the bundle schema as of 2026-06).
+      # Continuous: false → triggered by ``bundle run job_ingestion``,
+      # not by a long-running stream (Auto Loader uses AvailableNow in
+      # the source — single-shot batch per pipeline update).
+      continuous: false
+      # Development mode lets the pipeline reuse the same update_id on
+      # retry, which is fine for the case (manual runs only). For prod
+      # this would flip to false so each run is a fresh update_id.
+      development: true
+      libraries:
+        - file:
+            # Path is relative to the bundle root (where databricks.yml
+            # lives). Lakeflow loads it as a regular Python module — no
+            # ``# Databricks notebook source`` header needed for ``file``
+            # entries (that header is only required for ``notebook``).
+            path: ../ingestion/dlt_pipeline.py
+      configuration:
+        # Pipeline-level parameters consumed via ``spark.conf.get`` in
+        # ``ingestion/dlt_pipeline.py`` (the ``_conf`` helper). Keep the
+        # key names in sync with that file.
+        landing_volume_path: ${var.landing_volume_path}

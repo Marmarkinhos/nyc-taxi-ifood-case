@@ -41,6 +41,10 @@ targets:
       # devs share one catalog. Empty here because the Free Edition
       # workspace is single-tenant; left wired so the lever exists.
       catalog_prefix: ""
+      # Serverless Starter Warehouse auto-provisioned by the Free
+      # Edition workspace (captured 2026-06-09 via SQL Warehouses UI ->
+      # Connection details). Used by job_ingestion.update_audit_task.
+      sql_warehouse_id: "10ba36a843e45ac1"
 
   # Placeholder shape for a hypothetical production deployment. Kept
   # so `bundle validate --target prod` exercises the target wiring;
@@ -52,3 +56,6 @@ targets:
     variables:
       catalog: workspace
       catalog_prefix: ""
+      # No real prod workspace; placeholder kept so `bundle validate
+      # --target prod` still resolves the variable.
+      sql_warehouse_id: ""

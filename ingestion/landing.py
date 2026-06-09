@@ -1,3 +1,4 @@
+# Databricks notebook source
 """Landing notebook — TLC parquet download into Volume UC + audit row.
 
 This file is intended to run as a Databricks ``spark_python_task`` (or
