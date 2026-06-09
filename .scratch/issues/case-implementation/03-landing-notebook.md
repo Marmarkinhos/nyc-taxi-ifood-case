@@ -1,12 +1,41 @@
 ---
-status: ready-for-agent
+status: done
 created: 2026-06-08
+closed: 2026-06-09
 tags: [landing, audit, ingestion]
 blocked-by: [02-repo-skeleton-helpers-ci.md]
 blocks: [04-dlt-bronze-silver-canonica.md]
 ---
 
 # 03 — Landing notebook + `landing_audit`
+
+## Resolution (2026-06-09)
+
+Delivered: `ingestion/landing.py` (Spark/IO entry point) + three pure
+helpers `nyc_taxi_case.{landing_paths,audit,probe}` with 50 new unit
+tests (99 total, 99% coverage on `src/`).
+
+**Departures from the original ticket text:**
+
+- Used existing `nyc_taxi_case.window.expand_window`; the ticket
+  referenced `list_months` which never existed.
+- Volume path follows `general_variables.yml` single-source-of-truth
+  (`/Volumes/${catalog}/${bronze_schema}/landing/yellow/...`), not the
+  `raw_data/landing/nyc_taxi/yellow/...` path the ticket sketched.
+  General_variables wins; ticket text was stale vs ADR-0008 fan-out.
+- Audit row implements the **17-column ADR-0008 schema** (the ticket
+  listed a partial subset); column `source_mode` (per ADR-0008), not
+  `landing_mode` (the ticket's draft name).
+- Acceptance criterion "Notebook executável standalone via
+  `databricks workflows submit`" deferred to **ticket #06** (Free
+  Edition is serverless-only; the DAB job wires `spark_python_task`).
+  The Spark-free orchestration seams (`_process_month`,
+  `_audit_row_to_spark_row`) are exhaustively pytested instead.
+- CI bundle-validate job removed in this ticket — `bundle validate`
+  always calls SCIM `/Me` and Free Edition cannot use service
+  principals. See `.github/workflows/ci.yml` comment block.
+
+## What to build
 
 ## What to build
 

@@ -3,10 +3,10 @@
 iFood data engineering case — ingestion pipeline for NYC Yellow Taxi
 trips (Jan–May 2023) running on **Databricks Free Edition**.
 
-> Status: 🚧 **work in progress.** Ticket #02 (this slice) sets up the
-> repo skeleton, pure helpers and CI. Notebooks, DLT pipeline, dbt
-> project and AI/BI dashboard arrive in the subsequent slices
-> (`.scratch/issues/case-implementation/`).
+> Status: 🚧 **work in progress.** Tickets #02–#03 are done: repo
+> skeleton, pure helpers, CI, and the Landing notebook + audit row.
+> DLT pipeline, dbt project and AI/BI dashboard arrive in the
+> subsequent slices (`.scratch/issues/case-implementation/`).
 
 ## Architecture in one paragraph
 
@@ -39,19 +39,24 @@ chain, read [`docs/PLAN.md`](./docs/PLAN.md) and
 ├── src/nyc_taxi_case/          # Pure Python helpers (Spark-free)
 │   ├── window.py               # Ingestion window parsing/expansion
 │   ├── tlc_urls.py             # TLC CloudFront URL builder
-│   └── schema.py               # 5-column contract + filename regex
+│   ├── schema.py               # 5-column contract + filename regex
+│   ├── landing_paths.py        # Volume UC Hive-partitioned layout
+│   ├── probe.py                # ADR-0002 HEAD probe classifier
+│   └── audit.py                # ADR-0008 landing_audit row + DDL
 ├── ingestion/
-│   └── tests/                  # pytest unit suite for src/
+│   ├── landing.py              # Spark entry point: HTTP -> Volume + audit
+│   └── tests/                  # pytest unit suite for src/ + landing.py
 ├── docs/
 │   ├── PLAN.md                 # Historical execution plan
 │   ├── CASE.md                 # Original case statement
 │   └── adr/                    # Accepted decisions (0001-0011)
 ├── .scratch/issues/            # Local issue tracker (see AGENTS.md)
-└── .github/workflows/ci.yml    # Lint + types + pytest + bundle validate
+└── .github/workflows/ci.yml    # Lint + types + pytest (no bundle job: see CI section)
 ```
 
-Notebooks, the DLT pipeline definition, the dbt project, and the
-per-job resource YAMLs are added by tickets #03–#12.
+The DLT pipeline definition, the dbt project, and the per-job
+resource YAMLs (including the `job_ingestion` DAB that submits
+`ingestion/landing.py`) are added by tickets #04–#12.
 
 ## Local development
 
@@ -72,6 +77,17 @@ pytest ingestion/tests/
 # 3) Schema-validate the bundle (no workspace round-trip)
 databricks --profile free-edition bundle validate --target user_dev
 ```
+
+## CI
+
+The GitHub Actions workflow runs **ruff + mypy (strict) + pytest with
+coverage** on every push to `main` and every pull request. It does
+**not** run `databricks bundle validate`: the CLI always calls
+`/api/2.0/preview/scim/v2/Me` and therefore needs a real workspace
+PAT, and Free Edition cannot use service principals (CONTEXT.md
+"NÃO-objetivos"). DAB validation is part of the local dev loop
+instead — run the `bundle validate` step above before pushing any
+DAB change.
 
 ## Project rules (see `AGENTS.md`)
 
