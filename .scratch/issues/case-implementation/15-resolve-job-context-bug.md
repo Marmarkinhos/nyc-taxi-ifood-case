@@ -1,6 +1,7 @@
 ---
-status: ready-for-agent
+status: done
 created: 2026-06-09
+resolved: 2026-06-09
 tags: [bug, ingestion, landing, audit, job-context]
 blocked-by: []
 blocks: [10-job-dbt-dab.md]
@@ -149,3 +150,142 @@ SET pipeline_update_id = '<update_id_from_above>'
 WHERE pipeline_update_id IS NULL
   AND job_start_ts > TIMESTAMP'<corresponding_run_start>';
 ```
+
+## Resolution (2026-06-09)
+
+Implementado **Path B** (recomendação do ticket) com um achado
+adicional: existiam **dois bugs encadeados**, não um. O ticket
+diagnosticou só o primeiro (tag-scraping) porque o sintoma do segundo
+(SQL `{{job.run_id}}` literal) ficava mascarado enquanto o `job_run_id`
+da audit row era `"interactive"` — qualquer UPDATE não casaria de
+qualquer jeito. Só depois de o fix #1 produzir `job_run_id` numérico
+ficou óbvio que o `pipeline_update_id` continuava NULL.
+
+### Bug #1 — `_resolve_job_context()` tag-scraping (root cause original)
+
+`ingestion/landing.py:415-439` lia tags via
+`dbutils.notebook.entry_point.getDbutils().notebook().getContext()`
+(`runId` / `multitaskParentRunId` / `browserHostName`). Essas tags não
+estão populadas no runtime serverless da Free Edition pra notebook
+tasks executando dentro de jobs multi-task, então o `except Exception`
+genérico engolia o `KeyError`/`AttributeError` (sem warning visível
+porque o `tags.get(...)` retorna `None` silenciosamente) e a row caía
+pro fallback `"interactive"` em todos os 3 campos.
+
+**Fix**: trocar tag-scraping por `dbutils.widgets.get(...)`,
+alimentado por `base_parameters` no `notebook_task` que substitui
+`{{task.run_id}}` / `{{job.run_id}}` / `{{workspace.url}}` em
+runtime (documented Databricks Jobs *dynamic value reference*
+system — contract público, vs tags internas).
+
+Arquivos:
+
+- `ingestion/landing.py` — `_WIDGET_DEFAULTS` ganhou `task_run_id`,
+  `job_run_id`, `job_url` (todos default `"interactive"`).
+  `_resolve_job_context()` reescrita pra ler esses widgets; standalone
+  detection via `job_run_id == "interactive"` (audit SQL filtra
+  nessa coluna, então é a checagem canônica).
+- `resources/job_ingestion.yml` — `landing_task.notebook_task.base_parameters`
+  ganhou os 3 widgets; `job_url` montado inline porque não existe
+  `{{job.run_url}}` nativo (só `{{workspace.url}}` + `{{job.id}}` +
+  `{{job.run_id}}`).
+- `ingestion/tests/test_landing_notebook.py` — `TestResolveJobContext`
+  com 4 casos: `dbutils=None`, widgets populados, widgets carregando
+  defaults `"interactive"`, e `widgets.get` raising (graceful
+  fallback). Total: 12 → 16 testes no arquivo.
+
+### Bug #2 — `update_landing_audit.sql` `{{job.run_id}}` literal
+
+Achado durante validação end-to-end. A AC do ticket exige
+`pipeline_update_id` auto-backfilled. Depois do fix #1, run
+`81288161494309` deu audit row com `job_run_id="81288161494309"` (✓)
+mas task 3 reportou `SUCCESS` com `sql_output: {}` e a row ficou
+com `pipeline_update_id=NULL`. Um UPDATE manual com a mesma SQL e
+hard-coded `WHERE job_run_id = '81288161494309'` afetou 1 row,
+provando que a SQL é correta mas a substituição não acontecia.
+
+**Root cause**: dynamic-value-references como `{{job.run_id}}` são
+substituídos **só em campos de task-configuration YAML** (notebook
+`base_parameters`, sql_task `parameters`, etc), **NÃO** dentro do
+corpo de SQL files referenciados via `sql_task.file.path`. O
+placeholder era tratado como literal string `'{{job.run_id}}'`,
+nunca casava com nada, UPDATE silenciosamente afetava 0 rows, task 3
+retornava SUCCESS porque `UPDATE ... WHERE ...` com zero matches
+não é erro. Comprovado pela docs oficial Databricks
+([Access parameter values from a task](https://docs.databricks.com/aws/en/jobs/parameter-use))
+que explicita o caminho correto: SQL files usam **named parameters
+`:param_name`** com valores supridos por `sql_task.parameters`.
+
+**Fix**: usar named parameter binding.
+
+Arquivos:
+
+- `ingestion/sql/update_landing_audit.sql` — `WHERE job_run_id =
+  '{{job.run_id}}'` → `WHERE job_run_id = :job_run_id`. Long
+  comment documentando o trap pros próximos.
+- `resources/job_ingestion.yml` — `update_audit_task.sql_task`
+  ganhou `parameters: { job_run_id: "{{job.run_id}}" }`. Aqui o
+  `{{job.run_id}}` SIM é substituído (YAML config field).
+
+### Validação end-to-end
+
+Two bundle runs em 2026-06-09:
+
+**Run 1 (`81288161494309`)** — só com fix #1, antes do fix #2 ser
+descoberto. Resultado: `job_run_id="81288161494309"` ✓ mas
+`pipeline_update_id=NULL` ✗. Isso disparou a investigação que achou
+o bug #2.
+
+**Run 2 (`182411413204977`)** — fix #1 + fix #2 deployed. Resultado
+final na landing_audit:
+
+```
+run_id              = "403102412758327"            (task.run_id, numérico)
+job_run_id          = "182411413204977"            (job.run_id, casa URL)
+job_url             = "https://dbc-88968762-8346.cloud.databricks.com/?o=757803262701153/jobs/308012953236381/runs/182411413204977"
+pipeline_update_id  = "dcaabcb3-3e16-44a6-819a-d6b86f5a6ad2"  (auto-backfilled, SEM UPDATE manual)
+status              = "SUCCESS"
+```
+
+Todos os 5 acceptance criteria ✓:
+
+- ✅ `job_run_id` numérico (não `"interactive"`)
+- ✅ `run_id` ≠ `"interactive"` (= `task.run_id`)
+- ✅ `update_audit_task` afetou exatamente 1 row (validado por
+  UPDATE manual com `:job_run_id` binding antes do re-run — retornou
+  `num_affected_rows = 1`)
+- ✅ `pipeline_update_id` populado automaticamente pós-bundle run
+- ✅ Standalone mode (notebook UI sem job) continua retornando
+  `"interactive"` triple (testado via
+  `test_widgets_with_interactive_default_falls_back_to_triple`)
+- ✅ Teste novo cobrindo o widget path (`TestResolveJobContext`,
+  4 casos)
+
+### Gates
+
+```
+uv run ruff check .          → All checks passed!
+uv run ruff format --check . → 19 files already formatted
+uv run pytest -q             → 136 passed
+```
+
+### Follow-ups pra AGENTS.md (próxima sessão)
+
+Dois gotchas operacionais novos pra adicionar em `AGENTS.md`
+§"Gotchas operacionais":
+
+1. **`notebook().getContext()` tags ≠ contract público no serverless** —
+   tags como `runId`, `jobRunId`, `multitaskParentRunId`,
+   `browserHostName` não estão populadas dentro de jobs multi-task
+   na Free Edition. Usar `dbutils.widgets.get(...)` alimentado por
+   `base_parameters` com dynamic-value references como caminho
+   documentado. Sintoma silencioso: `_resolve_job_context()`
+   retornando `"interactive"` mesmo dentro de bundle run.
+
+2. **`{{job.run_id}}` em SQL file body NÃO é substituído** — dynamic
+   values só substituem em YAML task-configuration fields
+   (`base_parameters` / `sql_task.parameters` / etc), nunca dentro
+   do corpo de `sql_task.file.path`. Usar **named parameters**
+   `:param_name` no SQL e supply via `sql_task.parameters:` no
+   YAML. Sintoma: UPDATE silencioso de 0 rows com SUCCESS no task
+   status; `sql_output: {}` no `jobs get-run-output`.
