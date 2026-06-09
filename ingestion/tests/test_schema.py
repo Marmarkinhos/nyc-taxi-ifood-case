@@ -101,7 +101,7 @@ class TestExtractFileYearMonth:
             "yellow_tripdata_2023.parquet",
             "yellow_tripdata_2023-1.parquet",
             "yellow_tripdata_2023-13.parquet",
-            "green_tripdata_2023-01.parquet",        # wrong category
+            "green_tripdata_2023-01.parquet",  # wrong category
             "/some/random/file.parquet",
         ],
     )

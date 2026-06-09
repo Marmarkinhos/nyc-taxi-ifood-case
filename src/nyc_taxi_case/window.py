@@ -46,8 +46,7 @@ def parse_year_month(value: str) -> tuple[int, int]:
     match = YEAR_MONTH_PATTERN.match(value)
     if match is None:
         raise InvalidYearMonthError(
-            f"invalid year-month {value!r}; expected canonical 'YYYY-MM' "
-            "(e.g. '2023-01')"
+            f"invalid year-month {value!r}; expected canonical 'YYYY-MM' (e.g. '2023-01')"
         )
     year = int(match.group(1))
     month = int(match.group(2))

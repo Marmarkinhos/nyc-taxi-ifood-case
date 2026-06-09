@@ -35,9 +35,7 @@ class TestBuildYellowTaxiUrl:
     def test_base_is_the_tlc_cloudfront_validated_in_probe(self) -> None:
         # ADR-0010 / CONTEXT.md: HTTP landing mode hits this exact host
         # (probe 2026-06-08 returned STATUS=200 in 0.10s).
-        assert TLC_CLOUDFRONT_BASE == (
-            "https://d37ci6vzurychx.cloudfront.net/trip-data"
-        )
+        assert TLC_CLOUDFRONT_BASE == ("https://d37ci6vzurychx.cloudfront.net/trip-data")
 
     @pytest.mark.parametrize(
         "bad",

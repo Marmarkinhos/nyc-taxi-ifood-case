@@ -68,9 +68,7 @@ def validate_required_columns(columns: list[str]) -> None:
     present = set(columns)
     missing = [c for c in REQUIRED_TLC_COLUMNS if c not in present]
     if missing:
-        raise SchemaContractError(
-            "missing required TLC columns: " + ", ".join(missing)
-        )
+        raise SchemaContractError("missing required TLC columns: " + ", ".join(missing))
 
 
 def extract_file_year_month(path: str) -> str | None:

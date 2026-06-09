@@ -40,14 +40,14 @@ class TestParseYearMonth:
         [
             "",
             "2023",
-            "2023-1",      # month must be zero-padded
-            "23-01",       # year must be 4 digits
-            "2023-13",     # month out of range
-            "2023-00",     # month out of range
-            "2023/01",     # wrong separator
+            "2023-1",  # month must be zero-padded
+            "23-01",  # year must be 4 digits
+            "2023-13",  # month out of range
+            "2023-00",  # month out of range
+            "2023/01",  # wrong separator
             "2023-01-15",  # too many components
             "abc-de",
-            " 2023-01 ",   # we do not silently strip
+            " 2023-01 ",  # we do not silently strip
         ],
     )
     def test_invalid_formats_raise(self, raw: str) -> None:
