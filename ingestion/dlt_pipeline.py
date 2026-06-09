@@ -385,7 +385,6 @@ def _build_silver_projection(bronze: DataFrame) -> DataFrame:
 # #2 operates on the canonicalised BIGINT, not the raw DOUBLE.
 @dlt.expect_all_or_drop(  # type: ignore[misc]
     {
-        "passenger_count_in_range": "passenger_count BETWEEN 0 AND 9",
         "total_amount_non_negative": "total_amount >= 0",
         "trip_timestamps_not_null": (
             "tpep_pickup_datetime IS NOT NULL AND tpep_dropoff_datetime IS NOT NULL"
@@ -395,6 +394,12 @@ def _build_silver_projection(bronze: DataFrame) -> DataFrame:
 )
 @dlt.expect_all(  # type: ignore[misc]
     {
+        # warn-only: ~428K rows feb-mai com passenger_count NULL nativo
+        # TLC (não recuperáveis via _rescued_data, ADR-0015). Manter
+        # essas rows na Silver preserva fare/distance/location pras
+        # Q1/Q3/Q4 do case; análises de Q2 (média passageiros por hora)
+        # filtram WHERE passenger_count IS NOT NULL no dbt.
+        "passenger_count_in_range": "passenger_count BETWEEN 0 AND 9",
         "vendor_id_in_dictionary": "vendor_id IN (1, 2, 6, 7)",
         "pickup_month_matches_file": "pickup_year_month = file_year_month",
     }
