@@ -70,7 +70,11 @@ importante é a view existir e ser referenciável (Decisão #9 obs).
 
 - [ ] **Revogar PAT** `dapiee35...11860c` no workspace via UI:
       User Settings → Developer → Access tokens → Revoke
-- [ ] Revogar qualquer PAT adicional criado durante #01 (probe B)
+- [ ] Revogar PAT do probe B (#01) — comentário
+      `nyc-taxi-probe-2026-06-08`, prefixo `dapi6d5e...`, profile
+      `free-edition` em `~/.databrickscfg`
+- [ ] Remover bloco `[free-edition]` do `~/.databrickscfg` após
+      revogação (ou substituir por novo PAT permanente do case)
 - [ ] Confirmar que nenhum PAT vive em `.databrickscfg` ou
       `.env` versionados (grep + .gitignore audit)
 

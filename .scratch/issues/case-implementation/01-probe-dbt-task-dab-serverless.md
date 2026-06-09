@@ -1,11 +1,34 @@
 ---
-status: ready-for-human
+status: done
 created: 2026-06-08
+completed: 2026-06-08
 tags: [probe, hitl, blocker, dbt, dab]
 blocks: [10-job-dbt-dab.md]
+result: PASS
 ---
 
 # 01 — Probe Opção B: validar `dbt_task` no DAB em serverless Free Edition
+
+## Resultado (2026-06-08): ✅ PASS
+
+`dbt_task` em DAB serverless Free Edition funciona end-to-end.
+Run `1038370540326389` no job `171245947083102` terminou
+`TERMINATED SUCCESS` em ~2min com `dbt deps + seed + run`
+executando sem erro. Detalhes completos no ADR-0010 §Validação
+empírica (Probe B) + ADR-0011 §Validação empírica. Ticket #10
+segue planejado conforme escopo original.
+
+**Lições críticas pro ticket #10:**
+- Profile `databricks_cluster` é auto-gerado pelo runtime quando
+  `dbt_task.catalog/schema/warehouse_id` estão setados — **não
+  passar `--target` nos `commands`** e **não comitar
+  `dbt/profiles.yml`**.
+- `dbt-databricks` declarado em `environments.spec.dependencies`
+  (não em `libraries:`) pra rodar em serverless client 3.
+- Omitir `+schema` em `dbt_project.yml` se quiser que
+  `dbt_task.schema` vire schema final (sem concat duplo).
+
+## What to build (original)
 
 ## What to build
 
@@ -43,20 +66,22 @@ Saída do probe é **decisão arquitetural**, não código:
 
 ## Acceptance criteria
 
-- [ ] Perfil Databricks CLI configurado pro workspace Free Edition
-      (pré-requisito; pode ser feito dentro deste ticket ou
-      sinalizado como sub-bloqueador)
-- [ ] Mini-projeto dbt + mini-bundle criados em `/tmp/kilo/dbt-probe-b/`
-- [ ] `databricks bundle deploy` executado com sucesso
-- [ ] `databricks bundle run <job>` executado, resultado registrado
-      (PASS / FAIL com mensagem de erro completa)
-- [ ] ADR-0010 §Validação empírica + ADR-0011 atualizados com
+- [x] Perfil Databricks CLI configurado pro workspace Free Edition
+      (profile `free-edition` em `~/.databrickscfg`, isolado dos
+      outros profiles existentes)
+- [x] Mini-projeto dbt + mini-bundle criados em `/tmp/kilo/dbt-probe-b/`
+- [x] `databricks bundle deploy` executado com sucesso
+- [x] `databricks bundle run <job>` executado, resultado: **PASS**
+      (run_id 1038370540326389, TERMINATED SUCCESS, ~2min)
+- [x] ADR-0010 §Validação empírica + ADR-0011 atualizados com
       resultado e data
-- [ ] Se FAIL: ADR-0010 §Consequências reflete invocação do
+- [x] N/A — Se FAIL: ADR-0010 §Consequências reflete invocação do
       fallback; ticket #10 redefinido por nova issue ou edit
-- [ ] Mini-projeto e mini-bundle apagados de `/tmp/kilo/`
-- [ ] PAT usado no probe registrado pra revogação (entra no
-      ticket #13)
+- [x] Mini-projeto e mini-bundle apagados de `/tmp/kilo/` +
+      schemas `workspace.dbt_probe_b` + `workspace.dbt_probe_b_dbt_probe_b`
+      dropped + workspace bundle dir removido
+- [x] PAT usado no probe registrado pra revogação (item adicionado
+      no ticket #13 com comentário + prefixo do token)
 
 ## Blocked by
 

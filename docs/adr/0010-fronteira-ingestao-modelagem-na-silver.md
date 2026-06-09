@@ -117,7 +117,8 @@ Alternativas de stack rejeitadas:
 - Comportamento das 2 perguntas obrigatórias do case idêntico.
 
 ## Validação empírica
-Probe executado em 2026-06-08 (pt4 da sessão grilling):
+
+### Probe A — `dbt-databricks` via CLI local (2026-06-08, pt4 grilling)
 
 | Etapa | Resultado |
 |---|---|
@@ -126,8 +127,33 @@ Probe executado em 2026-06-08 (pt4 da sessão grilling):
 | `dbt run` (view com `ref(seed)`) | ✅ OK, 2.6s |
 
 `dbt-databricks` 1.12 funciona no workspace alvo via SQL Warehouse
-2X-Small + PAT. Risco residual: `dbt_task` no DAB em serverless
-Free Edition — virou ticket #1 do `to-issues` (validação Opção B).
+2X-Small + PAT.
+
+### Probe B — `dbt_task` no DAB em serverless Free Edition (2026-06-08, ticket #01)
+
+Risco residual de Probe A (`dbt_task` no DAB) validado empiricamente:
+
+| Etapa | Resultado |
+|---|---|
+| `databricks bundle validate` (1 job, 1 `dbt_task`, env serverless) | ✅ OK |
+| `databricks bundle deploy --target user_dev` | ✅ OK |
+| `databricks bundle run job_dbt_probe` (job_id 171245947083102, run_id 1038370540326389) | ✅ TERMINATED SUCCESS em ~2min |
+| `dbt deps + seed + run` dentro do task | ✅ PASS=2 ERROR=0 |
+| Profile resolution | runtime injeta profile `databricks_cluster` automaticamente quando `dbt_task.catalog/schema/warehouse_id` estão setados |
+| Library install | `environments.spec.dependencies: [dbt-databricks>=1.10,<2]` resolveu `dbt-databricks 1.12.0` + `dbt 1.11.8` em serverless client 3 |
+| Cold start | ~30s entre task start e primeiro comando dbt; aceitável |
+
+**Opção B validada.** `dbt_task` em DAB serverless Free Edition é
+viável. Ticket #10 (`job_dbt` DAB) segue conforme planejado.
+
+**Lições pro projeto real:**
+- Não passar `--target` nos `commands` do `dbt_task` — usar o profile
+  `databricks_cluster` auto-gerado pelo runtime.
+- Não comitar `dbt/profiles.yml` no repo — runtime ignora.
+- Omitir `+schema` no `dbt_project.yml` se quiser que `dbt_task.schema`
+  vire schema final (sem concat duplo); ou aceitar `<task_schema>_<config_schema>`.
+- Declarar `dbt-databricks` como `pypi` em `environments.spec.dependencies`,
+  não `libraries:` (libraries é pra clusters tradicionais, não serverless).
 
 ## Relação com outros ADRs
 - **ADR-0011** (monorepo + 2 jobs DAB independentes) é

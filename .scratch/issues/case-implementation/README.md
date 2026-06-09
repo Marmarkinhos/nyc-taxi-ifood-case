@@ -14,7 +14,7 @@ Implementação completa do case NYC Yellow Taxi, quebrada via skill
 
 | # | Título | Status | Tipo | Bloqueado por |
 |---|---|---|---|---|
-| [01](./01-probe-dbt-task-dab-serverless.md) | Probe Opção B `dbt_task` no DAB serverless | `ready-for-human` | HITL | — |
+| [01](./01-probe-dbt-task-dab-serverless.md) | Probe Opção B `dbt_task` no DAB serverless | `done` ✅ PASS | HITL | — |
 | [02](./02-repo-skeleton-helpers-ci.md) | Repo skeleton + helpers + CI | `ready-for-agent` | AFK | — |
 | [03](./03-landing-notebook.md) | Landing notebook + `landing_audit` | `ready-for-agent` | AFK | #02 |
 | [04](./04-dlt-bronze-silver-canonica.md) | DLT Bronze + Silver canônica | `ready-for-agent` | AFK | #03 |
@@ -37,5 +37,6 @@ Implementação completa do case NYC Yellow Taxi, quebrada via skill
 
 ## Próximo passo
 
-#01 é HITL e bloqueador efetivo do #10. Resto do work pode ser
-puxado em paralelo por agentes AFK respeitando dependências.
+#01 fechou PASS (2026-06-08) — #10 segue planejado, sem fallback.
+Resto do work pode ser puxado em paralelo por agentes AFK
+respeitando dependências. Critical path: #02 → #03 → #04 → #06.

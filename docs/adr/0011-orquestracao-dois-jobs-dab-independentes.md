@@ -128,3 +128,10 @@ herança/`extends`. Padrão `pagob2b-dbt` na iFood.
 - **ADR-0008** define o schema `landing_audit` que é o canal
   implícito de sinal de "ingestão done" pro `job_dbt` (via
   filtro de janela do ADR-0003).
+
+## Validação empírica
+Probe B (ticket #01) executado em 2026-06-08 validou que `dbt_task`
+em DAB serverless Free Edition funciona end-to-end (`bundle deploy
++ bundle run + dbt deps/seed/run` em ~2min). Detalhe completo no
+ADR-0010 §Validação empírica. Esta decisão (`job_dbt` standalone
+com 1 `dbt_task`) tem base empírica, não apenas teórica.

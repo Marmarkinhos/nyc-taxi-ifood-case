@@ -7,6 +7,21 @@ blocked-by: [01-probe-dbt-task-dab-serverless.md, 08-dbt-gold-model.md]
 
 # 10 — `job_dbt` DAB (`dbt_task` standalone)
 
+## ⚠️ Ler antes de implementar
+
+`docs/adr/0010-fronteira-ingestao-modelagem-na-silver.md`
+§Validação empírica → **Probe B** + bloco "Lições pro projeto
+real". São 4 gotchas operacionais do `dbt_task` em serverless
+Free Edition descobertos no ticket #01 que economizam ~1h de
+debug:
+
+1. Não passar `--target` nos `commands` (runtime auto-gera profile
+   `databricks_cluster`).
+2. Não comitar `dbt/profiles.yml` (runtime ignora).
+3. `dbt-databricks` em `environments.spec.dependencies`, não em
+   `libraries:`.
+4. Omitir `+schema` em `dbt_project.yml` ou aceitar concat duplo.
+
 ## What to build
 
 `resources/job_dbt.yml` com `dbt_task` standalone (ADR-0011 lado
