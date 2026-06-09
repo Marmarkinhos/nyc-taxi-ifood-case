@@ -190,3 +190,14 @@ Aprendizado operacional pós-primeiro run end-to-end (pt5):
   `dependencies` da env apontam pra `${workspace.artifact_path}/.internal/`
   e não pra `${workspace.file_path}/dist/`). Consolida Fixes #2-#5
   do ticket #06.
+
+Recovery de drift TLC (sessão pós-Fix #9):
+- **ADR-0013:** `delta.feature.timestampNtz` em Bronze e Silver
+  (TLC ship TIMESTAMP_NTZ; Free Edition Delta não habilita default).
+- **ADR-0014:** Bronze `cloudFiles.schemaHints` + `readerCaseSensitive=false`
+  pra fixar `Airport_fee`/`airport_fee` case rename TLC (Fix #7 + #8).
+  **Superseded em parte por ADR-0015.**
+- **ADR-0015:** Bronze `addNewColumnsWithTypeWidening` + Silver
+  `_rescued_data` recovery via `coalesce(typed, get_json_object(...))`
+  pra `passenger_count`/`RatecodeID` (type drift DOUBLE↔INT64 sem path
+  de widening). Silver 2.97M → 15.62M rows (Fix #9).

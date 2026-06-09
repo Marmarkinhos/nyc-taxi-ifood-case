@@ -81,10 +81,64 @@ que se parece com um destes, confirme se já não é um deles.
 - **Free Edition Delta default não tem `timestampNtz`** — Auto Loader
   infere TIMESTAMP_NTZ pros campos `tpep_*_datetime` da TLC, mas
   Delta default rejeita com `DELTA_FEATURES_REQUIRE_MANUAL_ENABLEMENT`.
-  Duas saídas: cast pra TIMESTAMP-com-tz no schema da Bronze, ou
-  `tblproperties={"delta.feature.timestampNtz": "supported"}` no
-  `@dlt.table` decorator. Atualmente bloqueando `dlt_pipeline_task`
-  (ticket #04 candidato a reabrir).
+  Resolvido por **ADR-0013**: `table_properties={"delta.feature.
+  timestampNtz": "supported"}` no `@dlt.table` da Bronze (e Silver,
+  defensive). H1 (cast/schemaHints na Bronze) rejeitada por violar
+  ADR-0001. Padrão reusável pra qualquer feature Delta que Free
+  Edition não habilite por default e a fonte requeira.
+- **TLC renomeia campos silenciosamente** (case mismatch causa mass
+  rescue) — TLC trocou `airport_fee` (jan/2023) por `Airport_fee`
+  (fev-mai/2023). Spark default `caseSensitive=false` + parquet
+  vectorized reader = quando o reader vê case-different no schema
+  cacheado, ele despeja o **row group inteiro** no `_rescued_data`,
+  incluindo colunas que não tinham mismatch. Sintoma: 81.5 % drop
+  na Silver via expectation `BETWEEN 0 AND 9` (passa por NULL).
+  Resolvido por **ADR-0014**: `cloudFiles.schemaHints` anchorando
+  nome+tipo source-side pros 19 campos TLC, gerado programaticamente
+  por `tlc_schema.bronze_schema_hints()`. Expectation warn-only
+  `bronze_no_rescued_data` cobre drift residual. Step extra: precisa
+  `--full-refresh` no pipeline pra invalidar schema cacheado. Gaps
+  reconhecidos (drift estrutural, métricas) → ticket #14.
+- **`cloudFiles.schemaHints` anchora nome, NÃO faz merge de
+  case-different** (Fix #8 / ADR-0014 follow-up correction) — hints
+  fazem o reader **escolher** o nome canônico que queremos
+  (`airport_fee`), mas se o parquet ship `Airport_fee`, o reader
+  ainda dumpa esse field no `_rescued_data` mesmo com match
+  case-insensitive. Docs Databricks explicam o comportamento e o
+  fix em [Schema inference and evolution §Change case-sensitive
+  behavior](https://docs.databricks.com/aws/en/ingestion/cloud-object-storage/auto-loader/schema#change-case-sensitive-behavior):
+  precisa **adicionalmente** setar `.option("readerCaseSensitive",
+  "false")`. ATENÇÃO: option key é **format-specific**
+  (DataFrameReader Parquet/JSON/CSV/Avro/XML), NÃO `cloudFiles.*`
+  namespace — a forma `cloudFiles.readerCaseSensitive` quebra com
+  `CF_UNKNOWN_OPTION_KEYS_ERROR`. Sintoma sem o flag: hints
+  aplicados (Bronze schema com `airport_fee` lowercase), mas
+  `_rescued_data` 100 % populado em todos os meses que ship
+  `Airport_fee` CamelCase. Investigação completa em ADR-0014
+  §"Follow-up correction".
+- **`cloudFiles.schemaHints` DESABILITA type widening na coluna
+  hinted; LONG↔DOUBLE não é widening em nenhum lugar** (Fix #9 /
+  ADR-0015) — hipótese original do ADR-0014 ("rescue feb-mai é tudo
+  case-mismatch") estava errada. Diff de schema pyarrow nos 5 parquets
+  TLC 2023 mostrou que TLC mudou os TIPOS FÍSICOS de 6 colunas entre
+  jan e fev: `VendorID/PULocationID/DOLocationID` INT64→INT32,
+  `passenger_count/RatecodeID` DOUBLE→INT64, `airport_fee`→`Airport_fee`.
+  Hints estavam pinando o tipo de jan, daí rescue feb-mai. Fix: trocar
+  evolution mode pra `addNewColumnsWithTypeWidening`, adicionar
+  `delta.enableTypeWidening: "true"` no `table_properties`, **remover
+  os 5 cols type-drifting do hint map** (resolvem via widening
+  automático no reader). Catch operacional: a tabela
+  [Auto Loader type widening — Supported type changes](https://docs.databricks.com/aws/en/ingestion/cloud-object-storage/auto-loader/type-widening#supported-type-changes)
+  lista `long → decimal` (não `long → double`) e `double` nem
+  aparece como source. Então `passenger_count`/`RatecodeID`
+  (DOUBLE jan ↔ INT64 feb-mai) **não tem path de widening em direção
+  nenhuma**. Pattern: para colunas que rescuam sem path de widening,
+  recuperar na Silver via `F.coalesce(typed_col, F.get_json_object(
+  F.col("_rescued_data"), "$.<source>").cast(canonical_type))`.
+  Mantém ADR-0001 (Bronze permanece com rescue registrado) e ADR-0010
+  (recovery acontece na camada de modelagem). Diff de schema TLC
+  cross-month é passo OBRIGATÓRIO antes de qualquer hipótese sobre
+  rescue mass.
 
 ## Contexto rápido
 

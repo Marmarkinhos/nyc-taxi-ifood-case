@@ -303,6 +303,130 @@ completion ou `dbutils.notebook.exit()`.
 sinalizar erro num notebook task) ao invés de `return 1`. SUCCESS/
 PARTIAL retorna naturalmente.
 
+### Fix #6 (2026-06-09) — `dlt_pipeline_task` falha em `timestampNtz`
+
+**Sintoma:** com landing_task verde end-to-end (Fixes #2-#5), o
+`dlt_pipeline_task` falha na criação da Bronze com
+`[DELTA_FEATURES_REQUIRE_MANUAL_ENABLEMENT] ... timestampNtz`.
+
+**Diagnose:** TLC parquet declara `tpep_pickup_datetime` /
+`tpep_dropoff_datetime` como `timestamp[us]` sem timezone (Arrow
+maps to Spark `TIMESTAMP_NTZ`). Auto Loader com
+`cloudFiles.inferColumnTypes=true` respeita o tipo do parquet. Delta
+default no Free Edition tem só `appendOnly` habilitado — o feature
+`timestampNtz` precisa ser ativado explicitamente. Sem ele, primeiro
+write na Bronze é rejeitado.
+
+**Decisão:** ADR-0013 (H2 — `table_properties` por tabela), rejeitando
+H1 (`cloudFiles.schemaHints` na Bronze) por violar ADR-0001 e acoplar
+ao schema TLC.
+
+**Fix:** `ingestion/dlt_pipeline.py` ganhou
+`"delta.feature.timestampNtz": "supported"` em ambos `table_properties`
+(Bronze: necessário; Silver: defensive — Silver castiga pra
+TIMESTAMP-com-tz, mas mantém simetria de capacidade Delta pro caso de
+futura coluna NTZ propagada da Bronze). `tlc_schema.py` inalterado
+(tipo canônico da Silver continua `TIMESTAMP`). Sem regression test
+Spark-free — a seam de regressão é o próprio `bundle run
+job_ingestion`, mesmo princípio do Fix #3 e ADR-0012.
+
+### Fix #7 (2026-06-09) — TLC case rename causa mass rescue na Bronze
+
+**Sintoma:** após Fix #6 destravar o DLT, primeira run end-to-end
+mostrou Silver dropando 81.5 % das rows (13.19M) na expectation
+`passenger_count_in_range`. Investigação SQL:
+
+```sql
+SELECT file_month, total, rescued, 100.0*rescued/total AS pct
+  FROM (
+    SELECT regexp_extract(_source_file_path,
+                          'yellow_tripdata_(\d{4}-\d{2})', 1) AS file_month,
+           COUNT(*) AS total,
+           SUM(CASE WHEN _rescued_data IS NOT NULL THEN 1 ELSE 0 END) AS rescued
+      FROM workspace.nyc_taxi_bronze.yellow_taxi_trips_raw
+    GROUP BY 1
+  );
+
+-- 2023-01: 3,066,766 / 0          (0.0%)
+-- 2023-02: 2,913,955 / 2,913,955  (100%)
+-- 2023-03: 3,403,766 / 3,403,766  (100%)
+-- 2023-04: 3,288,250 / 3,288,250  (100%)
+-- 2023-05: 3,513,649 / 3,513,649  (100%)
+```
+
+Uma row típica de fev-mai mostrava 6 colunas em NULL e o JSON
+rescuado:
+
+```json
+{"VendorID": 2, "passenger_count": 1, "RatecodeID": 1,
+ "PULocationID": 238, "DOLocationID": 42, "Airport_fee": 0.0,
+ "_file_path": "..."}
+```
+
+**Diagnose:** validação local com pyarrow nos 5 parquets TLC:
+
+- 2023-01 declara o campo como `airport_fee` (lowercase).
+- 2023-02 a 2023-05 declaram como `Airport_fee` (CamelCase).
+
+TLC renomeou silenciosamente o campo entre janeiro e fevereiro de
+2023. Spark default `caseSensitive=false` + parquet vectorized
+reader = quando o reader vê `Airport_fee` num arquivo onde o schema
+cacheado tem `airport_fee`, ele detecta case-mismatch e despeja
+**o row group inteiro** no `_rescued_data` — incluindo 5 colunas
+(`VendorID`, `passenger_count`, `RatecodeID`, `PULocationID`,
+`DOLocationID`) que **não tinham** problema de case-mismatch.
+
+`passenger_count` NULL na Bronze → Silver projection retorna NULL
+→ expectation `BETWEEN 0 AND 9` (NULL → FALSE) → DROP. 81.5 % loss.
+
+**Decisão:** ADR-0014 — `cloudFiles.schemaHints` anchorando os 19
+campos TLC + expectation warn-only `bronze_no_rescued_data`.
+Rejeitadas: Silver lookup case-insensitive (S2, trata sintoma),
+`spark.sql.caseSensitive=true` (S3, blast radius), rescue mode
+permanente (S4, anula Bronze tipada).
+
+**Fix:**
+
+1. `src/nyc_taxi_case/tlc_schema.py` ganhou `BRONZE_SCHEMA_HINT_TYPES`
+   (mapping source-name → source-side type) e
+   `bronze_schema_hints()` que gera a string DDL pro Auto Loader.
+   Source-side types (DOUBLE pra `passenger_count`, NÃO BIGINT) —
+   Silver continua o lugar dos casts canônicos.
+2. `ingestion/dlt_pipeline.py` ganhou
+   `.option("cloudFiles.schemaHints", bronze_schema_hints())` no
+   reader da Bronze.
+3. Mesma Bronze ganhou expectation warn-only
+   `bronze_no_rescued_data` (`_rescued_data IS NULL`) — drift de
+   tipo / cast failure futuros viram sinal no `event_log` sem
+   quebrar pipeline.
+4. 6 testes pytest novos cobrindo `BRONZE_SCHEMA_HINT_TYPES` parity
+   com `TLC_RENAME_MAP`, source-side types preservados, formato
+   DDL válido, e a assertion crítica de que `airport_fee` está
+   lowercase no hint.
+
+**Step extra obrigatório no HITL run:** schema cacheado da Bronze
+em `cloudFiles.schemaLocation` precisa ser invalidado, senão hints
+ficam sem efeito. Comando exato:
+
+```bash
+# 1. Achar o pipeline_id
+databricks --profile free-edition bundle summary --target user_dev \
+  | grep -A1 dlt_pipeline | head -3
+
+# 2. Disparar full-refresh (não bundle run normal)
+databricks --profile free-edition api post \
+  "/api/2.0/pipelines/<PIPELINE_ID>/updates" \
+  --json '{"full_refresh": true}'
+
+# OU via bundle (se DAB já tiver target configurado pra full refresh):
+databricks --profile free-edition bundle run job_ingestion \
+  --target user_dev --refresh-all
+```
+
+**Gaps reconhecidos** (ver ticket #14, ADR-0014 §Decision item 5):
+drift estrutural (coluna nova / removida), métrica `bronze_rescued_pct`
+na audit table, e alerting job-level. Fora do escopo de Fix #7.
+
 ### HITL gates pós-Fix #2 a #5 (run 946275077691272)
 
 - ✅ `bundle deploy --target user_dev` sobe wheel + recursos.
@@ -315,16 +439,56 @@ PARTIAL retorna naturalmente.
     `SELECT status, bytes_downloaded, months_downloaded FROM
     landing_audit`)
   - Task termina verde sem SystemExit espúrio (Fix #5)
-- ❌ `dlt_pipeline_task` falha com `[DELTA_FEATURES_REQUIRE_MANUAL_
-  ENABLEMENT] timestampNtz` — Auto Loader infere `TIMESTAMP_NTZ`
-  pros campos `tpep_pickup_datetime` / `tpep_dropoff_datetime` (TLC
-  parquet schema) mas a Delta default no Free Edition não habilita
-  esse feature. **Problema do ticket #04 (DLT Bronze)**, não #06.
-  Reabrir #04 ou abrir ticket dedicado com:
-  - Opção A: forçar `TIMESTAMP` (com tz) via cast na Bronze.
-  - Opção B: `tblproperties={"delta.feature.timestampNtz":
-    "supported"}` no `@dlt.table` decorator (ou via
-    `spark.conf.set("spark.databricks.delta.properties.defaults.
-    feature.timestampNtz", "supported")` no top do pipeline).
-- ⏳ `update_audit_task` (`pipeline_update_id` backfill) bloqueado em
-  UPSTREAM_FAILED até #04 destravado.
+- ✅ `dlt_pipeline_task` destravado por **Fix #6** (ADR-0013 —
+  `delta.feature.timestampNtz: supported`). DLT roda end-to-end.
+- ⚠️ Mas Silver dropou 81.5 % das rows (13.19M) na primeira run —
+  **Fix #7 aplicado** (ADR-0014 — `cloudFiles.schemaHints` na Bronze
+  pra resolver TLC `airport_fee`→`Airport_fee` rename + expectation
+  warn-only `bronze_no_rescued_data`). Aguardando re-run com
+  `--full-refresh` pra invalidar schema cacheado e recuperar as 13.12M
+  rows fev-mai/2023.
+- ❌ Fix #7 deployado + full-refresh (update_id
+  `76e62ba1-33a7-41bf-a54d-88da2be9b47e`, confirmed `full_refresh: true`
+  + `state: COMPLETED` via REST) **NÃO resolveu o rescue**. Bronze
+  pós-fix mostra jan=0 rescued / feb-mai=100% rescued — exatamente
+  como pré-fix. Hints anchoraram o nome (DESCRIBE da Bronze tem só
+  `airport_fee` lowercase, não inferiu `Airport_fee` da maioria), mas
+  o `_rescued_data` continua populado em feb-mai com `Airport_fee` no
+  JSON.
+- ⚠️ **Fix #8 (2026-06-09)** — adicionado
+  `.option("readerCaseSensitive", "false")` no reader Auto
+  Loader em `ingestion/dlt_pipeline.py`. (Inicialmente tentado como
+  `cloudFiles.readerCaseSensitive` — quebrou com
+  `CF_UNKNOWN_OPTION_KEYS_ERROR`; key é format-specific, sem prefixo
+  `cloudFiles.*`.) Update `66ccf5f0-7724-4408-b2d1-5fab510ea697`
+  COMPLETED com full_refresh, **mas o rescue persistiu idêntico**
+  ao pré-Fix #7. Hipótese "100% case-mismatch" descartada
+  empiricamente. ADR-0014 §"Follow-up correction" deixou o estado do
+  Fix #8 como "aguardando validação"; resultado real entra agora no
+  Fix #9.
+- ✅ **Fix #9 (2026-06-09)** — root cause real identificado via
+  diff de schema pyarrow nos 5 parquets TLC: TLC mudou tipos físicos
+  de 6 colunas entre jan e feb-mai. ADR-0015 (supersede parcial do
+  0014) aplica:
+  - `cloudFiles.schemaEvolutionMode` muda de `addNewColumns` →
+    `addNewColumnsWithTypeWidening`.
+  - `delta.enableTypeWidening: "true"` adicionado ao
+    `table_properties` da Bronze (prereq Databricks).
+  - 5 colunas type-drifting (`VendorID`/`passenger_count`/
+    `RatecodeID`/`PULocationID`/`DOLocationID`) **removidas** de
+    `BRONZE_SCHEMA_HINT_TYPES` (hints disable widening).
+  - `_build_silver_projection` ganha `_RESCUED_RECOVERY` map pros 2
+    cols sem path de widening (`passenger_count`, `RatecodeID`),
+    recuperando via `F.coalesce(typed, F.get_json_object(
+    F.col("_rescued_data"), "$.<source>").cast(...))`.
+  - `test_tlc_schema.py` inverte o contract: 14 cols devem estar
+    hinted, 5 type-drifting NÃO devem.
+  - Update `acc127b0-95da-4a01-942e-2a0577b40b41` COMPLETED.
+    Validação: Silver passa de 2.97M → 15.62M rows; expectations
+    `passenger_count_in_range` cai de 13.19M → 428K drops (96.7 %
+    redução), `vendor_id_in_dictionary` cai de 13.12M → 0.
+    `_rescued_data` Bronze feb-mai continua 100 % populado (só
+    `passenger_count`/`RatecodeID` no JSON agora), e isso é
+    correto: schema-drift detector permanece loud, Silver recupera.
+- ⏳ `update_audit_task` (`pipeline_update_id` backfill) — agora
+  pode ser validado end-to-end (Fix #9 verde).
