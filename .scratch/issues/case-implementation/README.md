@@ -20,7 +20,7 @@ Implementação completa do case NYC Yellow Taxi, quebrada via skill
 | [04](./04-dlt-bronze-silver-canonica.md) | DLT Bronze + Silver canônica | `done` ✅ | AFK | #03 |
 | [05](./05-dlt-expectations.md) | DLT expectations (6 Silver + 1 Bronze warn) | `done` ✅ | AFK | #04 |
 | [06](./06-job-ingestion-dab.md) | `job_ingestion` DAB | `done` ✅ | AFK | #04 |
-| [07](./07-dbt-project-skeleton.md) | dbt project + `sources.yml` + seed dim | `ready-for-agent` | AFK | #06 |
+| [07](./07-dbt-project-skeleton.md) | dbt project + `sources.yml` + seed dim | `done` ✅ | AFK | #06 |
 | [08](./08-dbt-gold-model.md) | dbt Gold model + filtro janela + enrichment | `ready-for-agent` | AFK | #07 |
 | [09](./09-dbt-tests.md) | dbt tests (4 inventariados) | `ready-for-agent` | AFK | #08 |
 | [10](./10-job-dbt-dab.md) | `job_dbt` DAB | `ready-for-agent` | AFK | #01, #08 |
@@ -38,9 +38,9 @@ Implementação completa do case NYC Yellow Taxi, quebrada via skill
 
 ## Próximo passo
 
-#01 PASS (2026-06-08), #02 fechou (2026-06-09), #03 fechou
-(2026-06-09), #04 fechou (2026-06-09). Próximo na critical path:
-**#06 — `job_ingestion` DAB** (wiring landing notebook → DLT pipeline
-→ post-DLT SQL `UPDATE landing_audit`). Paralelizável: **#05 — DLT
-expectations** (6 Silver + 1 Bronze warn-only). Critical path
-restante: #06 → #07 → #08 → #11 → #12 → #13.
+#01 PASS (2026-06-08), #02-#06 fecharam (2026-06-09), **#07 fechou
+(2026-06-09)** — `dim_locations` materializada em
+`workspace.nyc_taxi_gold` (265 rows, INT location_id). Próximo na
+critical path: **#08 — dbt Gold model** (projeção 5 colunas +
+derivadas + filtro de janela via `landing_audit` + enrichment com
+`dim_locations`). Critical path restante: #08 → #11 → #12 → #13.

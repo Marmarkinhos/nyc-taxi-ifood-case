@@ -1,12 +1,66 @@
 ---
-status: ready-for-agent
+status: done
 created: 2026-06-08
+completed: 2026-06-09
 tags: [dbt, skeleton, sources, seed, dim]
 blocked-by: [06-job-ingestion-dab.md]
 blocks: [08-dbt-gold-model.md]
 ---
 
 # 07 — dbt project skeleton + `sources.yml` + seed `dim_locations`
+
+## Resultado (2026-06-09): ✅ DONE
+
+Skeleton entregue, `dim_locations` materializada em
+`workspace.nyc_taxi_gold.dim_locations` (265 rows, `location_id INT`,
+8 boroughs distintos). Schema gold auto-criado pelo adapter
+dbt-databricks. `dbt source freshness` PASS contra Silver real.
+
+**Artefatos entregues:**
+
+- `dbt/dbt_project.yml` — `name: nyc_taxi_case`, profile
+  `nyc_taxi_case`, default `materialized: view`, seed config força
+  `location_id INT`, `+alias: dim_locations` (CSV chama
+  `taxi_zone_lookup`, tabela final chama `dim_locations`).
+- `dbt/profiles.yml` — targets `user_dev` + `prod`, credenciais via
+  `env_var('DBT_TOKEN')`. Schema/catalog escritos diretos (sem concat
+  `<target>_<config>`) por omitir `+schema` no project.
+- `dbt/models/sources.yml` — 2 sources: `silver.yellow_taxi_trips` +
+  `monitoring.landing_audit`. **Critical:** schema da Silver é
+  `nyc_taxi_bronze` (não `nyc_taxi_silver` como sugere o nome da var)
+  — Free Edition uses single workspace catalog (handoff caveat,
+  AGENTS.md). `loaded_at_field` + `freshness` dentro de `config:`
+  (dbt 1.11+ deprecation).
+- `dbt/packages.yml` — vazio (YAGNI, `dbt deps` no-op).
+- `dbt/seeds/taxi_zone_lookup.csv` — 265 rows, headers já em
+  snake_case na fonte (sem rename hooks).
+- `dbt/.gitignore` — `target/`, `dbt_packages/`, `logs/`, `.user.yml`.
+- `pyproject.toml` — extra `dbt = ["dbt-databricks>=1.10,<2"]`
+  separado de `dev` (ingestão não puxa dbt).
+
+**Runbook validado (local CLI):**
+
+```bash
+export DBT_TOKEN=$(awk '/^\[free-edition\]/{f=1;next} f && /^token/{print $3;exit}' ~/.databrickscfg)
+cd dbt
+uv run --project .. dbt deps               # no-op (packages vazio)
+uv run --project .. dbt parse --target user_dev          # ✅ clean
+uv run --project .. dbt seed --target user_dev           # ✅ INSERT 265, ~18s
+uv run --project .. dbt source freshness --target user_dev  # ✅ PASS, ~5s
+```
+
+**Notas operacionais:**
+
+- `dbt parse` mostra 1 warning "unused configuration paths:
+  `models.nyc_taxi_case`" — esperado pro skeleton; some quando #08
+  adiciona o primeiro modelo Gold.
+- Cold start do warehouse Serverless Starter é ~10-18s no primeiro
+  `dbt seed` (depois fica warm, ~2-3s).
+- `dbt-databricks 1.12.0` + `dbt-core 1.11.8` — mesma versão que o
+  probe B (ADR-0010), runtime serverless do `dbt_task` vai resolver
+  o mesmo conjunto.
+
+## What to build (original)
 
 ## What to build
 
@@ -63,23 +117,25 @@ no CSV já em snake_case).
 
 ## Acceptance criteria
 
-- [ ] `dbt/dbt_project.yml` valida com `dbt parse`
-- [ ] `dbt deps` roda sem erro
-- [ ] `dbt seed --target user_dev` cria
-      `${prefix}nyc_taxi_gold.dim_locations` com 260 linhas
-- [ ] `location_id` é INT (não STRING) pra casar com source Silver
-      no `relationships` test do #9
-- [ ] `dbt source freshness` (se aplicável) roda contra
-      `silver.yellow_taxi_trips` sem erro
-- [ ] `default materialization: view` aplica globalmente (sem
-      precisar repetir nos modelos)
-- [ ] Schema gold criado se não existir (via `+post-hook` ou
-      `on-run-start` se DLT não criou ainda — provavelmente DLT só
-      cria silver/bronze/monitoring)
-- [ ] Profile `databricks` usa SQL Warehouse 2X-Small via
-      `http_path` + token (mesmo padrão do probe Opção A)
-- [ ] **Sem** convenção de prefix `_int_`/`_fin_`
-- [ ] Modelo Gold ainda não criado — fica pro #08
+- [x] `dbt/dbt_project.yml` valida com `dbt parse`
+- [x] `dbt deps` roda sem erro (no-op, `packages.yml` vazio)
+- [x] `dbt seed --target user_dev` cria
+      `workspace.nyc_taxi_gold.dim_locations` com **265 linhas**
+      (TLC atualizou; ticket dizia ~260, OK)
+- [x] `location_id` é **INT** (não STRING/BIGINT) — validado via
+      `DESCRIBE TABLE` no warehouse
+- [x] `dbt source freshness` roda contra
+      `silver.yellow_taxi_trips` sem erro (PASS, ~5s)
+- [x] `default materialization: view` aplica globalmente via
+      `models.nyc_taxi_case.+materialized` no `dbt_project.yml`
+- [x] Schema gold criado **automaticamente pelo adapter
+      dbt-databricks** na primeira escrita — não precisou de
+      `+post-hook` nem `on-run-start`
+- [x] Profile `nyc_taxi_case` usa SQL Warehouse `10ba36a843e45ac1`
+      via `http_path: /sql/1.0/warehouses/10ba36a843e45ac1` + token
+      via `env_var('DBT_TOKEN')`
+- [x] **Sem** convenção de prefix `_int_`/`_fin_`
+- [x] Modelo Gold ainda não criado — fica pro #08
 
 ## Blocked by
 
