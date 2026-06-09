@@ -100,6 +100,18 @@ _WIDGET_DEFAULTS: dict[str, str] = {
     "catalog": "workspace",
     "monitoring_schema": "nyc_taxi_monitoring",
     "landing_volume_path": "/Volumes/workspace/nyc_taxi_bronze/landing/yellow",
+    # Job-context widgets. Populated by ``base_parameters`` in
+    # ``resources/job_ingestion.yml`` via Databricks Jobs dynamic-value
+    # references (``{{task.run_id}}`` / ``{{job.run_id}}`` /
+    # ``{{workspace.url}}``). The literal ``"interactive"`` default is
+    # what stays in the widget when the notebook is launched
+    # standalone (no surrounding job), which ``_resolve_job_context``
+    # treats as the standalone fallback path. See ticket #15 and the
+    # Databricks docs on dynamic value references for why widgets are
+    # used here in lieu of ``notebook().getContext()`` tag-scraping.
+    "task_run_id": "interactive",
+    "job_run_id": "interactive",
+    "job_url": "interactive",
 }
 
 
@@ -412,31 +424,61 @@ def _write_audit_row(  # pragma: no cover - IO
 # --------------------------------------------------------------------------- #
 
 
-def _resolve_job_context() -> tuple[str, str, str]:  # pragma: no cover - notebook-only
-    """Return ``(run_id, job_run_id, job_url)`` from the Databricks task context.
+_INTERACTIVE = "interactive"
 
-    Falls back to placeholder strings when the context tags are
-    missing (interactive notebook execution) so the row still inserts.
+
+def _resolve_job_context() -> tuple[str, str, str]:
+    """Return ``(run_id, job_run_id, job_url)`` from notebook widgets.
+
+    Ticket #15 (Path B): we used to scrape this trio from
+    ``dbutils.notebook.entry_point.getDbutils().notebook().getContext()``
+    tags (``runId`` / ``multitaskParentRunId`` / ``browserHostName``).
+    That contract silently broke on the serverless runtime — the
+    relevant tags either disappeared or were renamed, so every row
+    landed with ``"interactive"`` and the downstream
+    ``update_landing_audit.sql`` task (``WHERE job_run_id =
+    '{{job.run_id}}'``) matched zero rows and never backfilled
+    ``pipeline_update_id``. That in turn broke the ADR-0008 audit ↔
+    Gold-window contract (ADR-0003).
+
+    Widgets are the documented Databricks Jobs parameter-passing
+    surface (see *Dynamic value references*). The values are
+    populated by ``base_parameters`` on ``notebook_task`` in
+    ``resources/job_ingestion.yml`` — Databricks substitutes
+    ``{{task.run_id}}`` / ``{{job.run_id}}`` / ``{{workspace.url}}``
+    at task-execution time, so the widgets carry the real IDs by the
+    time this function runs.
+
+    Standalone (interactive) execution path: widgets fall back to the
+    literal ``"interactive"`` defaults declared in ``_WIDGET_DEFAULTS``
+    (one of the acceptance criteria of #15 — fallback preserved). We
+    detect that on ``job_run_id`` because the audit row's downstream
+    SQL UPDATE keys off that single column.
     """
-    run_id = "interactive"
-    job_run_id = "interactive"
-    job_url = "interactive"
     if dbutils is None:
-        return run_id, job_run_id, job_url
+        return _INTERACTIVE, _INTERACTIVE, _INTERACTIVE
     try:
-        ctx_json = dbutils.notebook.entry_point.getDbutils().notebook().getContext().toJson()  # type: ignore[union-attr]
-        import json
+        get = dbutils.widgets.get  # type: ignore[union-attr]
+        task_run_id = get("task_run_id")
+        job_run_id = get("job_run_id")
+        job_url = get("job_url")
+    except Exception as exc:  # noqa: BLE001 — widgets are best-effort
+        # ``dbutils.widgets.get`` raises ``Py4JJavaError`` (classic) or
+        # a Spark Connect ``ParseException`` when the widget is not
+        # declared. Both are wrapped as plain Python exceptions on the
+        # serverless runtime, so a single ``except Exception`` is the
+        # only portable catch. Surface the reason so a regression is
+        # not silent again (#15 root cause).
+        print(f"[landing] could not read job-context widgets: {exc}", file=sys.stderr)
+        return _INTERACTIVE, _INTERACTIVE, _INTERACTIVE
 
-        ctx = json.loads(ctx_json)
-        tags = ctx.get("tags", {}) or {}
-        run_id = tags.get("runId") or tags.get("taskRunId") or run_id
-        job_run_id = tags.get("multitaskParentRunId") or tags.get("jobRunId") or job_run_id
-        host = tags.get("browserHostName") or ""
-        if host and job_run_id != "interactive":
-            job_url = f"https://{host}/jobs/{tags.get('jobId', '')}/runs/{job_run_id}"
-    except Exception as exc:  # noqa: BLE001 — context is best-effort
-        print(f"[landing] could not resolve job context: {exc}", file=sys.stderr)
-    return run_id, job_run_id, job_url
+    # If the job didn't override the widget defaults, treat the whole
+    # trio as standalone — keeps the row insertable but makes the
+    # SQL UPDATE in task 3 a no-op (it filters on a numeric
+    # ``job_run_id``), which is the desired behaviour outside a job.
+    if job_run_id == _INTERACTIVE:
+        return _INTERACTIVE, _INTERACTIVE, _INTERACTIVE
+    return task_run_id, job_run_id, job_url
 
 
 # --------------------------------------------------------------------------- #
@@ -498,9 +540,7 @@ def main() -> int:  # pragma: no cover - notebook-only orchestration
     # we just return normally; on FAILED we raise so the task goes red
     # with the audit-row error message attached to the traceback.
     if row.status == "FAILED":
-        raise RuntimeError(
-            f"landing failed: {row.error_message or 'all months failed'}"
-        )
+        raise RuntimeError(f"landing failed: {row.error_message or 'all months failed'}")
     return 0
 
 
