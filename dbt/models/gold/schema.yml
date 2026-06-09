@@ -1,0 +1,77 @@
+# dbt/models/gold/schema.yml
+#
+# Gold-side dbt tests (ticket #09, ADR-0007 item 3). Two of the four
+# inventoried tests live here; the other two live on the Silver source
+# in ``dbt/models/sources.yml``. All use default severity = ``error``
+# — the warn channel is owned by DLT expectations (ADR-0005), dbt is
+# the hard-fail layer that blocks propagation to the evaluator.
+#
+# Test rationale:
+#   * ``relationships`` on ``pickup_location_id`` / ``dropoff_location_id``
+#     → ``taxi_zone_lookup.location_id``. TLC has added zones in 2023/2024
+#     without updating the public seed; this test catches the case where a
+#     new LocationID shows up in Silver but is missing from
+#     ``dim_locations``, which would otherwise surface only as a silent
+#     NULL borough/zone in Gold.
+#       NOTE: ``to`` references the seed by its NODE NAME
+#       (``taxi_zone_lookup``), not its materialised alias
+#       (``dim_locations``). dbt ``ref()`` and ``source()`` resolve by
+#       node name; using ``ref('dim_locations')`` raises "node not
+#       found" — same gotcha documented in the Gold model SQL.
+#   * ``not_null`` on ``pickup_year_month`` (Silver-materialised
+#     clustering key — should never be NULL post-Silver; if it is, the
+#     window filter in the model breaks silently) and on
+#     ``pickup_borough`` / ``dropoff_borough`` (the LEFT JOIN with the
+#     seed). The borough tests are the user-facing complement of the
+#     ``relationships`` tests: ``relationships`` says "every id is in
+#     the seed", ``not_null`` on borough says "the enrichment produced
+#     a value" — together they catch both missing-seed-row and
+#     join-broke-somehow.
+
+version: 2
+
+models:
+  - name: yellow_taxi_trips_consumption
+    description: >-
+      Per-trip Gold projection of Silver, scoped to the active
+      ingestion window via ``landing_audit`` and enriched with borough
+      / zone via ``dim_locations``. See model SQL header for the full
+      ADR cross-reference.
+    columns:
+      - name: pickup_location_id
+        description: >-
+          TLC pickup location id. Must exist in the ``taxi_zone_lookup``
+          seed so the borough/zone enrichment is meaningful.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('taxi_zone_lookup')
+                field: location_id
+      - name: dropoff_location_id
+        description: >-
+          TLC dropoff location id. Same contract as pickup_location_id.
+        data_tests:
+          - relationships:
+              arguments:
+                to: ref('taxi_zone_lookup')
+                field: location_id
+      - name: pickup_year_month
+        description: >-
+          Silver-materialised clustering key (YYYYMM as INT). The Gold
+          window filter relies on this being non-null and partition-
+          pruning-friendly.
+        data_tests:
+          - not_null
+      - name: pickup_borough
+        description: >-
+          Borough from ``dim_locations`` via LEFT JOIN. NULL here means
+          the seed lookup did not produce a row even though
+          ``relationships`` passed — typically a join logic bug.
+        data_tests:
+          - not_null
+      - name: dropoff_borough
+        description: >-
+          Borough from ``dim_locations`` via LEFT JOIN. Same contract
+          as pickup_borough.
+        data_tests:
+          - not_null

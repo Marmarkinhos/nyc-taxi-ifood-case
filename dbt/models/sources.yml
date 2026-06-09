@@ -63,6 +63,61 @@ sources:
           loaded_at_field: _ingestion_ts
           freshness:
             warn_after: { count: 24, period: hour }
+        # -------------------------------------------------------------
+        # dbt tests (ticket #09, ADR-0007 item 3)
+        # -------------------------------------------------------------
+        # Two of the four inventoried tests live here (source-side); the
+        # other two live in ``models/gold/schema.yml``. All four use
+        # default severity = ``error`` because the DLT-side expectations
+        # (warn-only by ADR-0005) already provide the "soft" signal —
+        # dbt is the layer that blocks propagation to Gold.
+        #
+        # 1. ``not_null`` on the columns the case answers depend on
+        #    (vendor_id, total_amount, pickup/dropoff datetime).
+        #    Equivalent to Bronze expectation #7 but enforced AFTER
+        #    Silver, so a NULL slipping past the DLT filter (or a
+        #    future schema-drift recovery in Silver leaving a column
+        #    half-typed) fails ``job_dbt`` instead of silently flowing
+        #    into Gold. ``vendor_id`` carries an extra ``accepted_values``
+        #    — intentional redundancy with DLT expectation #1 (warn):
+        #    the warn keeps the row + surfaces in event_log; the dbt
+        #    test hard-fails so an unknown vendor (e.g. TLC adds id=8
+        #    without notice) cannot reach the evaluator's Gold view.
+        #
+        # Deviation from ticket #09 spec (5 columns → 4):
+        #   ``passenger_count`` is NOT covered by ``not_null`` here.
+        #   The ticket was written before ADR-0016, which moved the
+        #   ``passenger_count_in_range`` DLT expectation from
+        #   ``expect_all_or_drop`` to warn-only precisely to KEEP
+        #   ~428K rows (~2.6%) where TLC ships ``passenger_count =
+        #   NULL`` at origin (driver entry omission, irrecoverable
+        #   even via ``_rescued_data``). Adding ``not_null`` here
+        #   would unconditionally fail every ``job_dbt`` run on the
+        #   real dataset and contradict an accepted ADR. Analyses
+        #   that depend on ``passenger_count`` (Q2: avg passengers/
+        #   hour in May) filter ``WHERE passenger_count IS NOT NULL``
+        #   explicitly, per ADR-0016 §Decision. The other four
+        #   ``not_null`` tests remain hard-fail.
+        columns:
+          - name: vendor_id
+            description: >-
+              TLC vendor id. Hard-failing accepted_values is the
+              dbt-side counterpart to the warn-only DLT expectation #1
+              (ADR-0007 item 3).
+            data_tests:
+              - not_null
+              - accepted_values:
+                  arguments:
+                    values: [1, 2, 6, 7]
+          - name: total_amount
+            data_tests:
+              - not_null
+          - name: tpep_pickup_datetime
+            data_tests:
+              - not_null
+          - name: tpep_dropoff_datetime
+            data_tests:
+              - not_null
 
   - name: monitoring
     description: >-
