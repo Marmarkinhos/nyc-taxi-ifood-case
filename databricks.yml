@@ -18,6 +18,27 @@
 bundle:
   name: nyc-taxi-case
 
+# ---------------------------------------------------------------------------
+# Local Python wheel artifact
+# ---------------------------------------------------------------------------
+# `ingestion/landing.py`, `ingestion/dlt_pipeline.py` and `ingestion/
+# update_audit*.py` import `nyc_taxi_case.*` from `src/`. On serverless
+# compute the local package is not on sys.path by default, so the bundle
+# must build it as a wheel and ship it as a job/pipeline dependency.
+# `databricks bundle deploy` invokes the `build` command below, then
+# uploads the resulting wheel to ${workspace.artifact_path}/.internal/
+# (the default location). The wheel is then referenced from the job /
+# pipeline `environments` blocks via ${workspaces.artifact_path}/...
+# (substituted by the bundle at deploy time).
+artifacts:
+  nyc_taxi_case_wheel:
+    type: whl
+    # `uv build --wheel` is faster than `python -m build` and is the
+    # tool already used by `pyproject.toml`'s [build-system]. Drops the
+    # wheel under ./dist/ (gitignored).
+    build: uv build --wheel
+    path: .
+
 include:
   - resources/*.yml
 

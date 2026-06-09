@@ -50,6 +50,14 @@ resources:
             # ``# Databricks notebook source`` header needed for ``file``
             # entries (that header is only required for ``notebook``).
             path: ../ingestion/dlt_pipeline.py
+      # ``environment.dependencies`` is the Lakeflow equivalent of the
+      # job-side ``environments.spec.dependencies``. The same wheel
+      # that the job tasks install needs to be on the pipeline runtime
+      # too, because ``ingestion/dlt_pipeline.py`` imports
+      # ``nyc_taxi_case.schema`` and ``nyc_taxi_case.tlc_schema``.
+      environment:
+        dependencies:
+          - ${workspace.file_path}/dist/nyc_taxi_case-0.1.0-py3-none-any.whl
       configuration:
         # Pipeline-level parameters consumed via ``spark.conf.get`` in
         # ``ingestion/dlt_pipeline.py`` (the ``_conf`` helper). Keep the

@@ -180,3 +180,30 @@ Implementado em 3 arquivos novos + 2 mudanças triviais.
   `landing_audit` (resolvido pelo tags context `tags.runId`).
 - Que `cluster_by=["pickup_year_month"]` do Silver é aceito (fallback
   pra `partition_cols` documentado em ADR-0006).
+
+### Fix #1 (2026-06-09) — `nyc_taxi_case` wheel não estava na env
+
+**Sintoma:** primeiro `bundle run` (job run 958048686653811) falhou
+no `landing_task` com `ModuleNotFoundError: No module named
+'nyc_taxi_case'`. Esperado em retrospecto: o bundle subia só os
+`.py` files do `ingestion/`, mas o `src/nyc_taxi_case/` não entra no
+`sys.path` da env serverless por mágica.
+
+**Fix:**
+
+1. Adicionado `artifacts.nyc_taxi_case_wheel` em `databricks.yml`
+   com `type: whl` + `build: uv build --wheel`. `bundle deploy`
+   buildam o wheel local e fazem upload pra
+   `${workspace.file_path}/dist/`.
+2. `resources/job_ingestion.yml` ganhou
+   `environments[].spec.dependencies` listando o wheel via path
+   resolvido `${workspace.file_path}/dist/nyc_taxi_case-0.1.0-py3-none-any.whl`.
+3. `resources/dlt_pipeline.yml` ganhou o mesmo wheel via
+   `environment.dependencies` (Lakeflow usa singular `environment`,
+   não `environments`).
+4. `.gitignore` ganhou `build/` (já tinha `dist/`).
+
+Validate confirma resolução pra path absoluto correto:
+`/Workspace/Users/<user>/.bundle/nyc-taxi-case/user_dev/files/dist/
+nyc_taxi_case-0.1.0-py3-none-any.whl`. Pendente HITL: re-run do
+`bundle deploy` + `bundle run job_ingestion`.

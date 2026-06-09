@@ -122,9 +122,17 @@ resources:
       # Compute environments (serverless only — Free Edition constraint)
       # ------------------------------------------------------------------
       # ``environments`` is the modern DAB block for serverless task
-      # compute; binds to tasks via ``environment_key``. ``spec`` is
-      # required even when empty (the schema demands a client version).
+      # compute; binds to tasks via ``environment_key``. The wheel
+      # listed under ``dependencies`` is the local ``nyc_taxi_case``
+      # package built by the ``artifacts.nyc_taxi_case_wheel`` block
+      # in ``databricks.yml`` and uploaded by ``bundle deploy`` to
+      # ${workspace.file_path}/dist/. Without it, ``landing.py``'s
+      # ``from nyc_taxi_case.audit import ...`` would raise
+      # ModuleNotFoundError on the serverless task (observed on
+      # 2026-06-09, job run 958048686653811).
       environments:
         - environment_key: serverless_default
           spec:
             client: "2"
+            dependencies:
+              - ${workspace.file_path}/dist/nyc_taxi_case-0.1.0-py3-none-any.whl
