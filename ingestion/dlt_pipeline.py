@@ -20,9 +20,14 @@ Pipeline** (formerly Delta Live Tables / DLT). It owns two nodes:
   Layout is **Liquid Clustering** on ``pickup_year_month`` (ADR-0006),
   with defensive ``tblproperties`` for Free Edition quota (ADR-0005).
 
+Both nodes carry **DLT expectations** (ticket #05, ADR-0007): 1 warn-only
+on Bronze (schema contract — the 5 required columns must arrive non-null)
+and 6 on Silver (4 ``expect_or_drop`` for case-answer integrity + 2
+``expect`` warn for TLC drift signals). Zero ``expect_or_fail`` by ADR;
+the rationale is in ``docs/adr/0007-expectations-sem-expect-or-fail.md``.
+
 **Out of scope (later tickets):**
 
-* DLT expectations — 6 Silver + 1 Bronze warn-only land in ticket #05.
 * The ``job_ingestion`` DAB that registers this pipeline + the
   ``UPDATE landing_audit SET pipeline_update_id`` SQL task — ticket #06.
 
@@ -53,8 +58,22 @@ from typing import TYPE_CHECKING
 import dlt  # type: ignore[import-not-found]  # Databricks-provided
 from pyspark.sql import functions as F  # noqa: N812
 
-from nyc_taxi_case.schema import FILE_YEAR_MONTH_PATTERN
+from nyc_taxi_case.schema import FILE_YEAR_MONTH_PATTERN, REQUIRED_TLC_COLUMNS
 from nyc_taxi_case.tlc_schema import TLC_RENAME_MAP, canonical_type
+
+# --------------------------------------------------------------------------- #
+# DLT expectation rules
+# --------------------------------------------------------------------------- #
+# Ticket #05 / ADR-0007: 6 Silver + 1 Bronze warn, **zero expect_or_fail**.
+# The contract is "fail soft + observe in event_log" — schema drift is caught
+# pre-deploy by ``test_tlc_schema.py``/``test_schema.py``; this layer is the
+# runtime safety net, never the gating mechanism.
+#
+# The Bronze rule is composed from ``REQUIRED_TLC_COLUMNS`` so a change in
+# the case-required column list propagates here without manual edit (caught
+# at PR time by the pytest contract test that ALSO reads that constant).
+
+_BRONZE_REQUIRED_NOT_NULL_RULE: str = " AND ".join(f"{c} IS NOT NULL" for c in REQUIRED_TLC_COLUMNS)
 
 if TYPE_CHECKING:  # pragma: no cover - type-only imports
     from pyspark.sql import DataFrame
@@ -117,6 +136,12 @@ _LANDING_VOLUME_PATH = _conf(
         "delta.autoOptimize.autoCompact": "true",
     },
 )
+# Expectation #7-bronze (ADR-0007): warn-only schema contract — the 5 columns
+# the case statement requires must arrive non-null. ``expect`` (not
+# ``expect_or_drop`` / ``expect_or_fail``) so a TLC rename surfaces in
+# event_log without aborting Bronze. The rule itself is sourced from
+# ``REQUIRED_TLC_COLUMNS`` (same constant the pytest contract reads).
+@dlt.expect("bronze_required_columns_not_null", _BRONZE_REQUIRED_NOT_NULL_RULE)  # type: ignore[misc]
 def yellow_taxi_trips_raw() -> DataFrame:
     """Bronze Streaming Table — TLC parquets via Auto Loader.
 
@@ -222,7 +247,8 @@ def _build_silver_projection(bronze: DataFrame) -> DataFrame:
         "TLC columns renamed to snake_case and cast to canonical Spark "
         "SQL types; pickup_year_month (ADR-0003) and file_year_month "
         "(ADR-0004) materialised. Liquid Clustering on pickup_year_month "
-        "(ADR-0006). No expectations yet (see ticket #05)."
+        "(ADR-0006). 6 expectations applied (#05 / ADR-0007): 4 drop + "
+        "2 warn; zero expect_or_fail."
     ),
     cluster_by=["pickup_year_month"],
     table_properties={
@@ -234,6 +260,39 @@ def _build_silver_projection(bronze: DataFrame) -> DataFrame:
         "delta.autoOptimize.autoCompact": "true",
         "delta.tuneFileSizesForRewrites": "true",
     },
+)
+# Silver expectations (ticket #05, ADR-0007). Grouped by severity:
+#
+# * ``expect_all_or_drop`` — rules #2-5: filter rows whose values would
+#   skew the case answers (refunds, impossible passenger counts, NULL or
+#   inverted timestamps). The dropped count surfaces in event_log so the
+#   pipeline observability view (ticket #13) can chart it.
+# * ``expect_all`` (warn) — rules #1 and #6a: TLC drift signals that do
+#   NOT corrupt downstream answers (unknown vendor_id stays in Silver;
+#   the dbt ``accepted_values`` test gates it before Gold). #6a surfaces
+#   TLC's known temporal noise (pickups dated 2001/2087 in 2023 files)
+#   per ADR-0003 — Silver preserves, Gold filters by the window.
+#
+# Rules use the *Silver* column names (post-rename) because expectations
+# evaluate against the table's projection, not its inputs. Reminder
+# from #04: ``passenger_count`` arrives as DOUBLE in the source (Arrow
+# widens NULL-bearing int cols) and is CAST to BIGINT in Silver — rule
+# #2 operates on the canonicalised BIGINT, not the raw DOUBLE.
+@dlt.expect_all_or_drop(  # type: ignore[misc]
+    {
+        "passenger_count_in_range": "passenger_count BETWEEN 0 AND 9",
+        "total_amount_non_negative": "total_amount >= 0",
+        "trip_timestamps_not_null": (
+            "tpep_pickup_datetime IS NOT NULL AND tpep_dropoff_datetime IS NOT NULL"
+        ),
+        "dropoff_after_pickup": "tpep_dropoff_datetime >= tpep_pickup_datetime",
+    }
+)
+@dlt.expect_all(  # type: ignore[misc]
+    {
+        "vendor_id_in_dictionary": "vendor_id IN (1, 2, 6, 7)",
+        "pickup_month_matches_file": "pickup_year_month = file_year_month",
+    }
 )
 def yellow_taxi_trips() -> DataFrame:
     """Silver Materialized View — canonical, typed Yellow Taxi trips.
