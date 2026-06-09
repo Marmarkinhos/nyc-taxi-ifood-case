@@ -71,12 +71,31 @@ resources:
             notebook_path: ../ingestion/landing.py
             # base_parameters become dbutils.widgets values inside the
             # notebook. Keys must match _WIDGET_DEFAULTS in landing.py.
+            #
+            # The ``task_run_id`` / ``job_run_id`` / ``job_url`` trio
+            # is the Path B fix for ticket #15: passing the job-run
+            # context via documented Databricks dynamic value
+            # references (``{{task.run_id}}`` / ``{{job.run_id}}`` /
+            # ``{{workspace.url}}``) instead of scraping
+            # ``notebook().getContext()`` tags from inside Python. The
+            # values land in widgets that ``_resolve_job_context()``
+            # in ``ingestion/landing.py`` reads on every run. The
+            # ``job_url`` is constructed inline because there is no
+            # native ``{{job.run_url}}`` reference — only
+            # ``{{workspace.url}}`` + ``{{job.id}}`` + ``{{job.run_id}}``.
+            # CRITICAL: the ``job_run_id`` widget value must match the
+            # value that ``ingestion/sql/update_landing_audit.sql``
+            # filters on — both come from the same ``{{job.run_id}}``
+            # substitution, so they are coupled by construction.
             base_parameters:
               start_year_month: "{{job.parameters.start_year_month}}"
               end_year_month: "{{job.parameters.end_year_month}}"
               catalog: ${var.catalog}
               monitoring_schema: ${var.monitoring_schema}
               landing_volume_path: ${var.landing_volume_path}
+              task_run_id: "{{task.run_id}}"
+              job_run_id: "{{job.run_id}}"
+              job_url: "{{workspace.url}}/jobs/{{job.id}}/runs/{{job.run_id}}"
           # Serverless compute via the environment_key pattern (Free
           # Edition: no instance pools, no SP, no all-purpose cluster).
           environment_key: serverless_default

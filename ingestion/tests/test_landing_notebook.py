@@ -206,6 +206,115 @@ class TestAuditRowToSparkRow:
 
 
 # --------------------------------------------------------------------------- #
+# _resolve_job_context — widget-driven job-context resolution (ticket #15)
+# --------------------------------------------------------------------------- #
+class TestResolveJobContext:
+    """Pins the Path B fix for #15: read job context from widgets, not tags.
+
+    Each test rebuilds a minimal ``dbutils`` stub that only carries a
+    ``widgets.get`` callable, monkeypatches it onto ``landing.dbutils``,
+    then exercises ``_resolve_job_context``. This is the same surface
+    a Databricks ``notebook_task`` exposes (after
+    ``base_parameters`` are wired in ``resources/job_ingestion.yml``).
+    """
+
+    @staticmethod
+    def _install_widgets(monkeypatch: pytest.MonkeyPatch, values: dict[str, str]) -> None:
+        """Stub ``landing.dbutils`` with a widgets backend over ``values``.
+
+        ``KeyError`` is raised for unknown widget names — matches the
+        real Databricks behaviour and lets us exercise the
+        widget-missing fallback branch.
+        """
+
+        class _Widgets:
+            def get(self, name: str) -> str:
+                if name not in values:
+                    raise KeyError(name)
+                return values[name]
+
+        class _DBUtils:
+            widgets = _Widgets()
+
+        monkeypatch.setattr(landing, "dbutils", _DBUtils())
+
+    def test_no_dbutils_returns_interactive_triple(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Plain pytest path (no Databricks runtime): the module-level
+        # ``dbutils`` is ``None``. The function must short-circuit
+        # without touching anything.
+        monkeypatch.setattr(landing, "dbutils", None)
+        assert landing._resolve_job_context() == (
+            "interactive",
+            "interactive",
+            "interactive",
+        )
+
+    def test_widgets_with_job_run_id_returns_widget_values(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Happy path: ``base_parameters`` injected the dynamic values
+        # so the widgets carry the real run ids. The trio must come
+        # through verbatim — the downstream
+        # ``update_landing_audit.sql`` filters on ``job_run_id``
+        # equality, so any mangling here breaks the SQL UPDATE.
+        self._install_widgets(
+            monkeypatch,
+            {
+                "task_run_id": "987654321",
+                "job_run_id": "1073098863810712",
+                "job_url": (
+                    "https://workspace.databricks.com/jobs/308012953236381/runs/1073098863810712"
+                ),
+            },
+        )
+        run_id, job_run_id, job_url = landing._resolve_job_context()
+        assert run_id == "987654321"
+        assert job_run_id == "1073098863810712"
+        assert job_url == (
+            "https://workspace.databricks.com/jobs/308012953236381/runs/1073098863810712"
+        )
+
+    def test_widgets_with_interactive_default_falls_back_to_triple(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Notebook launched standalone via the UI: widgets exist (they
+        # are declared in ``_ensure_widgets``) but carry the literal
+        # ``"interactive"`` default. The function must collapse the
+        # whole trio back to ``"interactive"`` so the standalone-mode
+        # contract from the acceptance criteria of #15 holds.
+        self._install_widgets(
+            monkeypatch,
+            {
+                "task_run_id": "interactive",
+                "job_run_id": "interactive",
+                "job_url": "interactive",
+            },
+        )
+        assert landing._resolve_job_context() == (
+            "interactive",
+            "interactive",
+            "interactive",
+        )
+
+    def test_widget_get_raises_falls_back_to_interactive(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Defensive branch: if the widget was somehow never declared
+        # (e.g. someone runs the notebook against a stale runtime
+        # before ``_ensure_widgets`` has run), ``dbutils.widgets.get``
+        # raises. We must NOT crash the job — the audit row should
+        # still insert with the standalone marker so the operator
+        # spots the regression in ``landing_audit`` instead of in a
+        # red task with a Py4J traceback.
+        self._install_widgets(monkeypatch, {})  # any get(...) raises KeyError
+        assert landing._resolve_job_context() == (
+            "interactive",
+            "interactive",
+            "interactive",
+        )
+
+
+# --------------------------------------------------------------------------- #
 # _audit_table_fqn — single source for the table name
 # --------------------------------------------------------------------------- #
 def test_audit_table_fqn_format() -> None:
