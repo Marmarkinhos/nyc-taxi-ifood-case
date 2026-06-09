@@ -43,27 +43,17 @@ jobs:
         run: pytest ingestion/tests/ -ra --cov=nyc_taxi_case --cov-report=term-missing
 
   # -------------------------------------------------------------------------
-  # Databricks: schema-validate the bundle WITHOUT deploying.
+  # NOTE: there is intentionally no `databricks bundle validate` job here.
   #
-  # `bundle validate` only checks YAML schema + variable resolution and
-  # does not need a real workspace credential, but the CLI does require
-  # *some* auth env vars before it will run. We feed it dummy values:
-  # Free Edition cannot deploy via service principal anyway (CONTEXT.md
-  # NÃO-objetivos), so a deploy job has no place in CI.
+  # `bundle validate` always calls /api/2.0/preview/scim/v2/Me (to resolve
+  # ${workspace.current_user.short_name} for mode: development, and to
+  # fetch host metadata in any mode) and therefore requires a real
+  # workspace PAT. Free Edition does not support service principals
+  # (CONTEXT.md "NÃO-objetivos": NÃO fazer deploy via CI), so wiring a
+  # rotating personal token into GH secrets just to run validate is not
+  # worth the operational cost for a solo case repo.
+  #
+  # The local dev loop covers DAB validation explicitly:
+  #   databricks --profile free-edition bundle validate --target user_dev
+  # See the dev quickstart in README.md before any DAB change is pushed.
   # -------------------------------------------------------------------------
-  bundle:
-    name: databricks bundle validate
-    runs-on: ubuntu-latest
-    env:
-      DATABRICKS_HOST: https://dbc-stub.cloud.databricks.com
-      DATABRICKS_TOKEN: dapi-ci-stub-not-a-real-token
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Databricks CLI
-        run: |
-          curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh \
-            | sh
-
-      - name: Validate user_dev target
-        run: databricks bundle validate --target user_dev
