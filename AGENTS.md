@@ -164,3 +164,71 @@ que se parece com um destes, confirme se já não é um deles.
 - Vocabulário load-bearing: `CONTEXT.md`
 - Histórico de fixes operacionais: `.scratch/issues/case-implementation/06-job-ingestion-dab.md`
   (Resolution + Fix #1-#5)
+
+## Worktree agents (Agent Manager spawned sessions)
+
+Quando um agente é spawned via Agent Manager num worktree
+(`.kilo/worktrees/<branch>/`), ele lê este `AGENTS.md` ao iniciar.
+Esta seção formaliza o contrato com esses agentes pra evitar
+retrabalho na sessão principal ao fazer merge.
+
+### Closeout obrigatório (antes de reportar "done")
+
+A regra global "não comite sem pedido explícito do user" vale pra
+**push** e pra **branches já mergeadas em main**. Dentro de um
+worktree próprio, criado pra um ticket específico, o agente **deve**
+comitar atomicamente antes de reportar conclusão. Sem isso, a sessão
+principal não consegue dar Apply / merge limpo.
+
+Sequência obrigatória ao terminar a implementação:
+
+1. Rodar gates locais: `uv run ruff check .` e `uv run --extra dev
+   pytest -q` (ou `uv run --with pytest pytest -q` se o `--extra dev`
+   não estiver disponível no env do worktree).
+2. Marcar o ticket como `done` com Resolution detalhada (incluir
+   números, output, ou comandos que provem os acceptance criteria).
+3. **Sincronizar o `.md` do ticket no worktree** — `.scratch/` no
+   worktree (`.kilo/worktrees/<branch>/.scratch/...`) é arquivo
+   **distinto** de `.scratch/` na main repo. Se a edição foi feita
+   no path da main por engano, `cp` o conteúdo pro path do worktree
+   antes de `git add`.
+4. Comitar atomicamente seguindo conventional commits:
+   - 1 commit pra implementação (`feat(scope)` / `fix(scope)` /
+     `test(scope)` lowercase + body com why, wrap 72)
+   - 1 commit separado pro closeout do ticket
+     (`docs(issues): close ticket #NN (<short>)`)
+   - separar concerns: implementação ≠ documentação
+5. **NÃO** fazer `git push` (continua sendo manual do user).
+6. **NÃO** mexer em `.scratch/issues/case-implementation/README.md`
+   — a sessão principal consolida status dos múltiplos worktrees
+   de uma vez após o merge, pra evitar 3-way conflicts triviais.
+
+### O que reportar no final
+
+A mensagem final do agente pra sessão principal deve listar:
+
+- Hashes + subjects dos commits criados
+- Arquivos tocados (incluindo o `.md` do ticket)
+- Gates rodados + resultado
+- Qualquer desvio do spec do ticket + justificativa (com link pra
+  ADR se aplicável)
+
+### Padrão de merge na sessão principal
+
+Sessão principal aplica via `git merge --no-ff <branch> -m "merge:
+<branch> (#NN)"` (não via Apply da UI), na ordem que escolher. Zero
+overlap entre worktreas é precondição pro paralelo — se houver
+overlap, o agente deve sinalizar no prompt inicial e a sessão
+principal serializa.
+
+### Lições aprendidas (rodada 09+11+15, 2026-06-09)
+
+- **Gap real do "não comite sem pedido":** agente do #09 implementou
+  + escreveu Resolution mentalmente + parou sem comitar nada do
+  ticket `.md`. Sessão principal teve que recriar o closeout commit
+  manualmente. Esta seção existe pra fechar esse gap.
+- **`.scratch/` worktree vs main:** agente do #11 editou a Resolution
+  no path da main repo, não no path do worktree. Detectou no
+  pre-commit, fez `cp`, comitou. Documentado no passo 3 acima.
+- **`README.md` de tickets:** zero agente mexeu (instrução explícita
+  no prompt funcionou) → manter o padrão.
