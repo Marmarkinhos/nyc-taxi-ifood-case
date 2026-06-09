@@ -17,7 +17,7 @@ Implementação completa do case NYC Yellow Taxi, quebrada via skill
 | [01](./01-probe-dbt-task-dab-serverless.md) | Probe Opção B `dbt_task` no DAB serverless | `done` ✅ PASS | HITL | — |
 | [02](./02-repo-skeleton-helpers-ci.md) | Repo skeleton + helpers + CI | `done` ✅ | AFK | — |
 | [03](./03-landing-notebook.md) | Landing notebook + `landing_audit` | `done` ✅ | AFK | #02 |
-| [04](./04-dlt-bronze-silver-canonica.md) | DLT Bronze + Silver canônica | `ready-for-agent` | AFK | #03 |
+| [04](./04-dlt-bronze-silver-canonica.md) | DLT Bronze + Silver canônica | `done` ✅ | AFK | #03 |
 | [05](./05-dlt-expectations.md) | DLT expectations (6 Silver + 1 Bronze warn) | `ready-for-agent` | AFK | #04 |
 | [06](./06-job-ingestion-dab.md) | `job_ingestion` DAB | `ready-for-agent` | AFK | #04 |
 | [07](./07-dbt-project-skeleton.md) | dbt project + `sources.yml` + seed dim | `ready-for-agent` | AFK | #06 |
@@ -38,6 +38,8 @@ Implementação completa do case NYC Yellow Taxi, quebrada via skill
 ## Próximo passo
 
 #01 PASS (2026-06-08), #02 fechou (2026-06-09), #03 fechou
-(2026-06-09). Próximo na critical path: **#04 — DLT Bronze + Silver
-canônica**. Critical path restante: #04 → #06 → #07 → #08 → #11 →
-#12 → #13.
+(2026-06-09), #04 fechou (2026-06-09). Próximo na critical path:
+**#06 — `job_ingestion` DAB** (wiring landing notebook → DLT pipeline
+→ post-DLT SQL `UPDATE landing_audit`). Paralelizável: **#05 — DLT
+expectations** (6 Silver + 1 Bronze warn-only). Critical path
+restante: #06 → #07 → #08 → #11 → #12 → #13.

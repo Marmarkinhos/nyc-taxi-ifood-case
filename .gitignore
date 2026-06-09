@@ -22,6 +22,18 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
+# TLC parquet samples downloaded for schema inspection during development.
+# Landing notebook fetches these at runtime; we never commit binary data.
+yellow_tripdata_*.parquet
+green_tripdata_*.parquet
+fhv_tripdata_*.parquet
+fhvhv_tripdata_*.parquet
+
+# uv lockfile is not committed: dependencies are declared in
+# pyproject.toml and dev environments are reproducible from there.
+# The lock would force every contributor to use uv.
+uv.lock
+
 # === SCRATCH (LOCAL DEV ONLY — NUNCA PUSH) ===
 # Referências do repo iFood, notas pessoais, drafts.
 # Contém código corporativo proprietário — NÃO deve ir pro GitHub público.
