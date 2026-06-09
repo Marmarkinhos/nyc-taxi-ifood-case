@@ -126,13 +126,15 @@ resources:
       # listed under ``dependencies`` is the local ``nyc_taxi_case``
       # package built by the ``artifacts.nyc_taxi_case_wheel`` block
       # in ``databricks.yml`` and uploaded by ``bundle deploy`` to
-      # ${workspace.file_path}/dist/. Without it, ``landing.py``'s
-      # ``from nyc_taxi_case.audit import ...`` would raise
-      # ModuleNotFoundError on the serverless task (observed on
-      # 2026-06-09, job run 958048686653811).
+      # ${workspace.artifact_path}/.internal/ (the DAB default for
+      # ``type: whl`` artifacts — NOT ${workspace.file_path}, which
+      # only holds ``sync.include`` files). Without this dependency,
+      # ``landing.py``'s ``from nyc_taxi_case.audit import ...`` would
+      # raise ModuleNotFoundError on the serverless task (observed on
+      # 2026-06-09, job runs 958048686653811 and 399355919004015).
       environments:
         - environment_key: serverless_default
           spec:
             client: "2"
             dependencies:
-              - ${workspace.file_path}/dist/nyc_taxi_case-0.1.0-py3-none-any.whl
+              - ${workspace.artifact_path}/.internal/nyc_taxi_case-0.1.0-py3-none-any.whl
