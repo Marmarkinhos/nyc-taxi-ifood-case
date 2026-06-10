@@ -9,11 +9,6 @@
       "displayName": "Q2 — Hourly avg passenger_count (May, ADR-0016)",
       "name": "ds_hourly",
       "query": "SELECT pickup_hour, AVG(passenger_count) AS avg_passenger_count, COUNT(passenger_count) AS trip_count_with_passenger FROM workspace.nyc_taxi_gold.yellow_taxi_trips_consumption WHERE pickup_year_month = '2023-05' AND passenger_count IS NOT NULL GROUP BY pickup_hour ORDER BY pickup_hour"
-    },
-    {
-      "displayName": "EDA — Borough x Borough flow",
-      "name": "ds_eda",
-      "query": "SELECT pickup_borough, dropoff_borough, COUNT(*) AS trip_count, AVG(total_amount) AS avg_total_amount FROM workspace.nyc_taxi_gold.yellow_taxi_trips_consumption GROUP BY pickup_borough, dropoff_borough ORDER BY trip_count DESC"
     }
   ],
   "pages": [
@@ -107,82 +102,6 @@
                   "axis": { "title": "Avg passenger_count" }
                 }
               }
-            }
-          }
-        },
-        {
-          "position": { "x": 0, "y": 11, "width": 6, "height": 6 },
-          "widget": {
-            "name": "eda_pivot",
-            "queries": [
-              {
-                "name": "main_query",
-                "query": {
-                  "datasetName": "ds_eda",
-                  "disaggregated": false,
-                  "fields": [
-                    { "name": "pickup_borough", "expression": "`pickup_borough`" },
-                    { "name": "dropoff_borough", "expression": "`dropoff_borough`" },
-                    { "name": "trip_count", "expression": "`trip_count`" },
-                    { "name": "avg_total_amount", "expression": "`avg_total_amount`" }
-                  ]
-                }
-              }
-            ],
-            "spec": {
-              "version": 1,
-              "widgetType": "table",
-              "frame": {
-                "showTitle": true,
-                "title": "EDA — Borough x Borough flow (volume + avg fare)"
-              },
-              "encodings": {
-                "columns": [
-                  {
-                    "fieldName": "pickup_borough",
-                    "title": "Pickup borough",
-                    "displayName": "Pickup borough",
-                    "type": "string",
-                    "displayAs": "string",
-                    "order": 0,
-                    "visible": true
-                  },
-                  {
-                    "fieldName": "dropoff_borough",
-                    "title": "Dropoff borough",
-                    "displayName": "Dropoff borough",
-                    "type": "string",
-                    "displayAs": "string",
-                    "order": 1,
-                    "visible": true
-                  },
-                  {
-                    "fieldName": "trip_count",
-                    "title": "Trip count",
-                    "displayName": "Trip count",
-                    "type": "integer",
-                    "displayAs": "number",
-                    "numberFormat": "0,0",
-                    "alignContent": "right",
-                    "order": 2,
-                    "visible": true
-                  },
-                  {
-                    "fieldName": "avg_total_amount",
-                    "title": "Avg total_amount (USD)",
-                    "displayName": "Avg total_amount (USD)",
-                    "type": "float",
-                    "displayAs": "number",
-                    "numberFormat": "$0.00",
-                    "alignContent": "right",
-                    "order": 3,
-                    "visible": true
-                  }
-                ]
-              },
-              "itemsPerPage": 25,
-              "paginationSize": "default",
-              "withRowNumber": false
             }
           }
         }
