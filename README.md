@@ -63,8 +63,7 @@ test (20 dbt tests hard-fail)`.
   (`cloudFiles.schemaHints` + `addNewColumnsWithTypeWidening`, ADRs
   0014/0015).
 - **Storage:** Unity Catalog, Delta tables, Liquid Clustering em
-  `pickup_year_month` na Silver (ADR-0006 — partição estática perde
-  pra LC em Free Edition serverless).
+  `pickup_year_month` na Silver 
 - **Modelagem:** dbt-databricks, 4 Gold views + 1 seed
   (`dim_locations` da TLC zone lookup).
 - **Consumo:** AI/BI (Lakeview) dashboard + notebook `display()` +
