@@ -1,10 +1,13 @@
+{{ config(materialized='view') }}
 {#-
-  Analysis #3 — Bonus EDA (case "creativity" axis, plan Decisão #8):
+  Gold model #4 — Bonus EDA (case "creativity" axis, plan Decisão #8):
   pickup-borough × dropoff-borough flow matrix with trip volume and
   average fare.
 
-  Compile-only analysis. See ``monthly_avg_total_amount.sql`` for the
-  rationale on living under ``analyses/`` rather than ``models/``.
+  Materialization: ``view``. Promoted from ``analyses/`` to ``models/``
+  so the notebook in ``notebooks/answers.py`` can read it as a regular
+  Spark table — see header of ``monthly_avg_total_amount.sql`` for the
+  rationale.
 
   What it answers:
     * "Which inter-borough flows carry the most yellow-cab volume

@@ -1,11 +1,11 @@
+{{ config(materialized='view') }}
 {#-
-  Analysis #1 — Case question 1: "Qual a média mensal de total_amount?"
+  Gold model #2 — Case question 1: "Qual a média mensal de total_amount?"
 
-  Compile-only analysis (lives under ``analyses/``, not ``models/``):
-  ``dbt compile`` renders the file to ``target/compiled/...`` and the
-  rendered SQL is executed ad-hoc against the warehouse for the case
-  deliverable. No materialised view, no schema footprint — matches the
-  ticket scope (case-answer reporting), not a downstream consumer.
+  Materialization: ``view`` (thin aggregation over the 16M-row Gold
+  consumption view, cheap to rebuild; promoted from ``analyses/`` to
+  ``models/`` so the notebook in ``notebooks/answers.py`` can
+  ``spark.read.table(...)`` it without re-rendering compile-only SQL).
 
   Source: ``ref('yellow_taxi_trips_consumption')`` (Gold view, already
   scoped to the latest complete ingestion window by

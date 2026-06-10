@@ -5,7 +5,8 @@
 
   Materialization: ``view`` (inherited from ``dbt_project.yml``;
   intentional — Gold here is a thin projection over a 16M-row Silver,
-  cheap to rebuild, and analyses in #11 do their own aggregation).
+  cheap to rebuild, and the answer-views in #11 do their own
+  aggregation on top of this one).
 
   Why this exists (ADR-0010, ADR-0011):
     Modelling does not share job dependencies with ingestion. The only

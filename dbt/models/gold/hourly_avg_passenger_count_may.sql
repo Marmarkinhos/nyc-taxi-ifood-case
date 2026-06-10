@@ -1,9 +1,12 @@
+{{ config(materialized='view') }}
 {#-
-  Analysis #2 — Case question 2: "Qual a média de passenger_count por
+  Gold model #3 — Case question 2: "Qual a média de passenger_count por
   hora do dia, considerando todas as viagens de Maio?"
 
-  Compile-only analysis. See ``monthly_avg_total_amount.sql`` for the
-  rationale on living under ``analyses/`` rather than ``models/``.
+  Materialization: ``view``. Promoted from ``analyses/`` to ``models/``
+  so the notebook in ``notebooks/answers.py`` can read it as a regular
+  Spark table — see header of ``monthly_avg_total_amount.sql`` for the
+  rationale.
 
   ADR-0016 — load-bearing decision in this query:
 

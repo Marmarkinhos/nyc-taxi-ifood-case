@@ -1,10 +1,11 @@
 # dbt/models/gold/schema.yml
 #
-# Gold-side dbt tests (ticket #09, ADR-0007 item 3). Two of the four
-# inventoried tests live here; the other two live on the Silver source
-# in ``dbt/models/sources.yml``. All use default severity = ``error``
-# — the warn channel is owned by DLT expectations (ADR-0005), dbt is
-# the hard-fail layer that blocks propagation to the evaluator.
+# Gold-side dbt tests (ticket #09, ADR-0007 item 3). 14 tests defined
+# here cover the Gold consumption view + the 3 answer views; the
+# remaining 6 tests live on the Silver source in ``dbt/models/sources.yml``
+# (20 total). All use default severity = ``error`` — the warn channel
+# is owned by DLT expectations (ADR-0005), dbt is the hard-fail layer
+# that blocks propagation to the evaluator.
 #
 # Test rationale:
 #   * ``relationships`` on ``pickup_location_id`` / ``dropoff_location_id``
@@ -73,5 +74,75 @@ models:
         description: >-
           Borough from ``dim_locations`` via LEFT JOIN. Same contract
           as pickup_borough.
+        data_tests:
+          - not_null
+
+  - name: monthly_avg_total_amount
+    description: >-
+      Case question 1 — monthly average of ``total_amount`` across the
+      active ingestion window. View on top of
+      ``yellow_taxi_trips_consumption``. See model SQL header for
+      semantics + NULL contract.
+    columns:
+      - name: pickup_year_month
+        description: >-
+          Month bucket ('YYYY-MM' STRING). Must be non-null — it's the
+          GROUP BY key and the only thing distinguishing rows.
+        data_tests:
+          - not_null
+          - unique
+      - name: avg_total_amount
+        description: >-
+          Unweighted mean of ``total_amount`` for the month.
+        data_tests:
+          - not_null
+      - name: trip_count
+        description: >-
+          ``COUNT(*)`` of trips contributing to the average.
+        data_tests:
+          - not_null
+
+  - name: hourly_avg_passenger_count_may
+    description: >-
+      Case question 2 — average ``passenger_count`` by hour of day for
+      May 2023. View on top of ``yellow_taxi_trips_consumption`` with
+      the ADR-0016 NULL-filter applied. See model SQL header.
+    columns:
+      - name: pickup_hour
+        description: >-
+          Hour of day bucket (0..23, INT). Must be non-null + unique —
+          it's the GROUP BY key.
+        data_tests:
+          - not_null
+          - unique
+      - name: avg_passenger_count
+        description: >-
+          Mean ``passenger_count`` excluding the ~2.6 % NULL rows
+          (ADR-0016).
+        data_tests:
+          - not_null
+      - name: trip_count_with_passenger
+        description: >-
+          ``COUNT(passenger_count)`` — denominator of the AVG, NOT
+          ``COUNT(*)`` (ADR-0016).
+        data_tests:
+          - not_null
+
+  - name: eda_geographic
+    description: >-
+      Bonus EDA — pickup-borough × dropoff-borough flow matrix with
+      trip count and average fare. View on top of
+      ``yellow_taxi_trips_consumption``. Keeps NULL borough buckets on
+      purpose (signal for zones outside the 260 published TLC zones).
+    columns:
+      - name: trip_count
+        description: >-
+          ``COUNT(*)`` of trips per (pickup_borough, dropoff_borough)
+          pair. Must be non-null.
+        data_tests:
+          - not_null
+      - name: avg_total_amount
+        description: >-
+          Mean ``total_amount`` per borough pair.
         data_tests:
           - not_null
