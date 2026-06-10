@@ -50,7 +50,7 @@
 resources:
   jobs:
     job_dbt:
-      name: "[${bundle.target}] nyc-taxi dbt (silver → gold + analyses)"
+      name: "[${bundle.target}] nyc-taxi dbt (silver → gold views)"
 
       # Schedule paused in every target (ADR-0011). The block is here
       # so the job shows up in the workspace UI as "scheduled but

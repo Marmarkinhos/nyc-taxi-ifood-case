@@ -9,9 +9,9 @@
 # MAGIC ## Single source of truth
 # MAGIC
 # MAGIC Os 3 modelos consumidos aqui são definidos em
-# MAGIC [`dbt/analyses/`](../dbt/analyses) (compile-only analyses —
+# MAGIC [`dbt/models/gold/`](../dbt/models/gold) (materialized views —
 # MAGIC ver Resolution do ticket [#11](../.scratch/issues/case-implementation/11-dbt-analyses.md))
-# MAGIC e materializados sob demanda contra
+# MAGIC materializados em
 # MAGIC `${catalog}.${catalog_prefix}nyc_taxi_gold` pelo job_dbt DAB
 # MAGIC ([#10](../.scratch/issues/case-implementation/10-job-dbt-dab.md)):
 # MAGIC
@@ -76,7 +76,7 @@ print(f"Reading Gold analytics from: {gold_fqn_schema}")
 # MAGIC Pergunta literal do case: "Qual a média mensal de `total_amount`?".
 # MAGIC O modelo dbt `monthly_avg_total_amount` agrega por
 # MAGIC `pickup_year_month` (5 linhas, Jan–Mai 2023; ver
-# MAGIC [`dbt/analyses/monthly_avg_total_amount.sql`](../dbt/analyses/monthly_avg_total_amount.sql)
+# MAGIC [`dbt/models/gold/monthly_avg_total_amount.sql`](../dbt/models/gold/monthly_avg_total_amount.sql)
 # MAGIC para a SQL e a justificativa de `COUNT(*)` × `COUNT(total_amount)`).
 # MAGIC
 # MAGIC **Resultado esperado** (Resolution #11): a média sobe
@@ -108,7 +108,7 @@ display(monthly_df)
 # MAGIC * `COUNT(passenger_count)` (não `COUNT(*)`) no denominador.
 # MAGIC
 # MAGIC O motivo está em
-# MAGIC [`dbt/analyses/hourly_avg_passenger_count_may.sql`](../dbt/analyses/hourly_avg_passenger_count_may.sql)
+# MAGIC [`dbt/models/gold/hourly_avg_passenger_count_may.sql`](../dbt/models/gold/hourly_avg_passenger_count_may.sql)
 # MAGIC + [ADR-0016](../docs/adr/0016-passenger-count-warn-em-vez-de-drop.md):
 # MAGIC ~102K rows de Maio (~2.95 %) têm `passenger_count` NULL nativo
 # MAGIC TLC e ficaram na Silver porque dropar a row corromperia as
@@ -141,7 +141,7 @@ display(hourly_df)
 # MAGIC + uso da `dim_locations` seed). O modelo dbt `eda_geographic`
 # MAGIC retorna 63 combinações `pickup_borough × dropoff_borough` com
 # MAGIC `trip_count` e `avg_total_amount`; ver
-# MAGIC [`dbt/analyses/eda_geographic.sql`](../dbt/analyses/eda_geographic.sql).
+# MAGIC [`dbt/models/gold/eda_geographic.sql`](../dbt/models/gold/eda_geographic.sql).
 # MAGIC
 # MAGIC **Resultado esperado** (Resolution #11):
 # MAGIC

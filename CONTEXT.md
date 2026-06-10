@@ -73,7 +73,7 @@ contrato. Espelha o padrão iFood (`ifp-data-ingestions` DLT-puro +
   só escreve em `gold` (ADR-0011, pt4). Refresh manual via `dbt seed`
   (parte do `bundle run job_dbt`); TLC atualiza zone lookup ~1x/ano,
   aceitável. Usada pelo enriquecimento da Gold e pelo modelo
-  `analyses/eda_geographic.sql`. Ver ADR-0009 (editado).
+  `gold/eda_geographic.sql`. Ver ADR-0009 (editado).
 - **pickup_year_month** — STRING `YYYY-MM` derivada de
   `tpep_pickup_datetime`. **Pode divergir** do mês declarado no arquivo
   TLC (fonte tem ruído: pickups em 2001/2087). Silver preserva o
@@ -108,12 +108,12 @@ contrato. Espelha o padrão iFood (`ifp-data-ingestions` DLT-puro +
     artifacts. Wheel do `nyc_taxi_case` vive aqui; `dependencies` nos
     blocos `environments` / `environment` precisam apontar pra cá
     (não pra `file_path/dist/`). ADR-0012.
-- **Trio de consumo** — modelos dbt em `dbt/models/analyses/` (SSoT) +
-  notebook `answers.py` (orquestra `display()` dos modelos via
-  `spark.read.table`) + AI/BI dashboard `.lvdash.json` (referencia
-  mesmas tabelas materializadas pelo dbt). **Modelo dbt é single
-  source of truth**; notebook e dashboard apenas exibem (ver README
-  seção "Camada de consumo").
+- **Trio de consumo** — modelos dbt em `dbt/models/gold/*.sql` (SSoT,
+  views materializadas) + notebook `answers.py` (orquestra `display()`
+  dos modelos via `spark.read.table`) + AI/BI dashboard `.lvdash.json`
+  (referencia mesmas tabelas materializadas pelo dbt). **Modelo dbt é
+  single source of truth**; notebook e dashboard apenas exibem (ver
+  README seção "Trio de consumo").
 - **Expectations** — 7 total (6 na Silver + 1 na Bronze); **nenhuma**
   é `expect_or_fail` em Free Edition (blast radius > sinal — ADR-0007).
   Severidade refinada per ADR-0016: drop **só quando manter a row

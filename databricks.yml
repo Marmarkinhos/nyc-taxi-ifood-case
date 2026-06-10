@@ -2,7 +2,7 @@
 #
 # Two independent DAB jobs live under `resources/`:
 #   - job_ingestion (DLT + Auto Loader): landing -> bronze -> silver
-#   - job_dbt       (dbt-databricks):    silver  -> gold + analyses
+#   - job_dbt       (dbt-databricks):    silver  -> gold views
 #
 # They do NOT declare cross-job depends_on. Contract between them is
 # `dbt/models/sources.yml` pointing at the Silver canonical table.

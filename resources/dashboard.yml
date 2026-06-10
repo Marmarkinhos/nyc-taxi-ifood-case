@@ -11,7 +11,7 @@
 #
 #   2. ``resources/nyc_taxi_dashboard.lvdash.json`` — AI/BI dashboard
 #      (Lakeview) declared below. Datasets are SQL queries that mirror
-#      ``dbt/analyses/*.sql`` (the SSoT), running against the Gold
+#      ``dbt/models/gold/*.sql`` (the SSoT), running against the Gold
 #      view ``workspace.nyc_taxi_gold.yellow_taxi_trips_consumption``
 #      via the same Free Edition Serverless Starter warehouse
 #      (``${var.sql_warehouse_id}``) already used by

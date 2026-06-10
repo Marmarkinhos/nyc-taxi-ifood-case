@@ -3,14 +3,15 @@
 # dbt project for the modelling side of the nyc-taxi case (ADR-0010,
 # ADR-0011). Consumes the Silver canonical table produced by
 # ``job_ingestion`` (DLT + Auto Loader) via ``models/sources.yml``
-# and publishes Gold + ``dim_locations`` + analyses under
+# and publishes Gold views + ``dim_locations`` under
 # ``${prefix}nyc_taxi_gold``.
 #
 # Naming conventions:
 #   - Project name matches the wheel package (``nyc_taxi_case``) so the
 #     two halves of the monorepo share an identifier.
 #   - No ``_int_``/``_fin_`` model prefix convention (rejected at
-#     planning time — over-engineering for 3 models; cited in README).
+#     planning time — over-engineering for 4 Gold views; cited in
+#     README).
 #   - Default materialization is ``view`` (cheap to rebuild, fits a
 #     case with ~16M Silver rows + small Gold projection).
 #

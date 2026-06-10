@@ -25,10 +25,12 @@ live in [`docs/adr/`](./docs/adr/).
 - **Manual run model:** schedules are PAUSED in every target;
   execution is `bundle run job_ingestion` then `bundle run job_dbt`.
   Free Edition has no service principal and no instance pools.
-- **Case answers ship two ways:** `dbt/analyses/*.sql` (compile-only
-  source of truth) + `notebooks/answers.py` (interactive `display()`)
+- **Case answers ship three ways:** `dbt/models/gold/*.sql` (the 3
+  materialized Gold views are the SSoT — `monthly_avg_total_amount`,
+  `hourly_avg_passenger_count_may`, `eda_geographic`) +
+  `notebooks/answers.py` (interactive `display()` reading those views)
   + `resources/nyc_taxi_dashboard.lvdash.json` (AI/BI dashboard, one
-  URL for the evaluator). All three read the same Gold view → numbers
+  URL for the evaluator). All three read the same Gold layer → numbers
   cannot drift.
 
 ## Runbook
@@ -48,7 +50,7 @@ databricks --profile free-edition bundle deploy --target user_dev
 databricks --profile free-edition bundle run job_ingestion --target user_dev
 
 # 4) Run modelling: dbt deps + seed (dim_locations) + run (Gold) +
-#    test (10 dbt tests)   (~1m30s)
+#    test (20 dbt tests)   (~1m30s)
 databricks --profile free-edition bundle run job_dbt --target user_dev
 ```
 
@@ -119,14 +121,13 @@ self-contained under `dbt/`.
 │   │   ├── sources.yml            # The one cross-job contract (Silver + landing_audit)
 │   │   └── gold/
 │   │       ├── yellow_taxi_trips_consumption.sql   # Gold view (window-scoped + enriched)
-│   │       └── schema.yml         # 5 dbt tests (relationships + not_null)
-│   ├── seeds/taxi_zone_lookup.csv # → dim_locations (265 rows, ADR-0009)
-│   └── analyses/                  # 3 compile-only case answers + EDA
-│       ├── monthly_avg_total_amount.sql        # Q1
-│       ├── hourly_avg_passenger_count_may.sql  # Q2
-│       └── eda_geographic.sql                  # Q3/Q4 EDA
+│   │       ├── monthly_avg_total_amount.sql        # Q1 (view)
+│   │       ├── hourly_avg_passenger_count_may.sql  # Q2 (view, ADR-0016)
+│   │       ├── eda_geographic.sql                  # Q3/Q4 EDA (view)
+│   │       └── schema.yml         # 14 Gold-side dbt tests (relationships + not_null + unique)
+│   └── seeds/taxi_zone_lookup.csv # → dim_locations (265 rows, ADR-0009)
 ├── notebooks/
-│   └── answers.py                 # display()-driven render of the 3 analyses
+│   └── answers.py                 # display()-driven render of the 3 Gold views
 ├── docs/
 │   ├── CASE.md                    # Original iFood case statement
 │   ├── PLAN.md                    # Historical execution plan
@@ -173,18 +174,18 @@ TLC parquet ───▶│ 1. landing_task (notebook)                  │
                 │                                             │
                 │ 1. dbt_task (dbt-databricks)                │
                 │    dbt deps → seed (dim_locations) →        │
-                │    run (Gold view, window-filtered via      │
+                │    run (Gold views, window-filtered via     │
                 │           landing_audit) →                  │
-                │    test (5 dbt tests, hard-fail)            │
+                │    test (20 dbt tests, hard-fail)           │
                 └────────────────────┬────────────────────────┘
                                      │
-              Gold view (nyc_taxi_gold.yellow_taxi_trips_consumption)
+              Gold views (nyc_taxi_gold.*)
                                      │
                   ┌──────────────────┼──────────────────┐
                   ▼                  ▼                  ▼
-        dbt analyses/         notebooks/answers.py   AI/BI dashboard
-        (compile only,        (display() interactive)(single URL,
-         SSoT for SQL)                               viewer-first)
+        Gold .sql models     notebooks/answers.py   AI/BI dashboard
+        (versioned SSoT)     (display() interactive)(single URL,
+                                                    viewer-first)
 ```
 
 No arrow connects `job_ingestion` to `job_dbt`. The only contract is
@@ -242,9 +243,9 @@ One line each; full text under `docs/adr/`.
 These are conscious choices that did not need their own decision
 record but are easy to second-guess from the outside.
 
-- **No `_int_` / `_fin_` model prefix convention in dbt.** Three models
-  total (Gold + seed + analyses) — model-prefix taxonomies pay off at
-  ≥10 models. Rejected as over-engineering.
+- **No `_int_` / `_fin_` model prefix convention in dbt.** Four Gold
+  views + one seed total — model-prefix taxonomies pay off at ≥10
+  models. Rejected as over-engineering.
 - **Monorepo, not two GitHub repos.** Splitting into
   `ifp-data-ingestions` + `pagob2b-dbt` shapes is a one-shot
   `git filter-repo` away (`ingestion/` + half of `resources/` →
@@ -260,17 +261,17 @@ record but are easy to second-guess from the outside.
 ## Trio de consumo
 
 PLAN.md Decisão #8: the case answers ship three ways from the same
-Gold view, so the numbers cannot drift.
+Gold layer, so the numbers cannot drift.
 
 | Surface | Path | Why |
 |---|---|---|
-| **dbt analyses** | `dbt/analyses/*.sql` | Compile-only SQL, version-controlled SSoT for the answer queries. Anyone can `dbt compile` and inspect the rendered SQL. |
+| **dbt Gold models** | `dbt/models/gold/*.sql` | Materialized views, version-controlled SSoT for the answer queries. Anyone can `dbt compile` and inspect the rendered SQL. |
 | **Notebook** | `notebooks/answers.py` | Code-first: open notebook → run cell → interactive chart via `display()`. Source SQL is one click away from any chart. |
-| **AI/BI dashboard** | `resources/nyc_taxi_dashboard.lvdash.json` (deployed via DAB) | Viewer-first: a single URL produces the 3 charts without anyone editing code. Reads the same Gold view. |
+| **AI/BI dashboard** | `resources/nyc_taxi_dashboard.lvdash.json` (deployed via DAB) | Viewer-first: a single URL produces the 3 charts without anyone editing code. Reads the same Gold views. |
 
-All three call the same underlying Gold view. Adding a 4th surface
+All three call the same underlying Gold views. Adding a 4th surface
 (`/api/2.0/sql/statements`, a Power BI tile, …) means adding a query
-against `workspace.nyc_taxi_gold.yellow_taxi_trips_consumption`, not
+against `workspace.nyc_taxi_gold.*`, not
 duplicating analytics logic.
 
 ## Local development
