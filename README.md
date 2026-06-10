@@ -11,6 +11,29 @@ em projetos de ETL.
 Feito em 2 dias usando spec-driven development com workflow agêntico,
 garantindo ADRs, testes e observabilidade.
 
+## Como esse repo foi construído
+
+70 commits em 2 dias, autor único, distribuídos em 15 tickets
+versionados em `.scratch/issues/case-implementation/`. Cinco desses
+tickets rodaram em paralelo via git worktrees, com agentes
+independentes implementando cada vertical slice e a sessão principal
+fazendo merge linear (commits `merge: <branch> (#NN)` no log).
+
+Cada decisão load-bearing virou ADR antes de virar código: 17 ADRs
+em `docs/adr/`, indexadas em `docs/adr/README.md`, cobrindo storage,
+fronteira ingestão↔modelagem, drift de schema TLC, severidade de
+expectations e mais. Gotchas operacionais descobertos durante a
+implementação (16 fixes documentados) foram acumulados em
+[AGENTS.md](AGENTS.md) pra que qualquer agente (humano ou IA)
+continue o trabalho a partir daqui.
+
+O ciclo foi spec-driven: PRD em [docs/PLAN.md](docs/PLAN.md) → tickets
+como vertical slices → implementação test-first quando aplicável →
+ADR quando a decisão divergiu do plano original (caso de
+[ADR-0016](docs/adr/0016-passenger-count-warn-em-vez-de-drop.md), que
+reverteu uma decisão do PLAN.md). README, CONTEXT.md e RUNBOOK.md são
+consequência desse ciclo, não pré-requisito.
+
 ## As respostas do case
 
 ![Dashboard AI/BI com Q1 (line) e Q2 (bar)](docs/img/01-dashboard.png)
@@ -72,7 +95,7 @@ test (20 dbt tests hard-fail)`.
   (`cloudFiles.schemaHints` + `addNewColumnsWithTypeWidening`, ADRs
   0014/0015).
 - **Storage:** Unity Catalog, Delta tables, Liquid Clustering em
-  `pickup_year_month` na Silver 
+  `pickup_year_month` na Silver.
 - **Modelagem:** dbt-databricks, 4 Gold views + 1 seed
   (`dim_locations` da TLC zone lookup).
 - **Consumo:** AI/BI (Lakeview) dashboard + notebook `display()` +
@@ -140,7 +163,7 @@ não duplicar lógica analítica. SSoT em um lugar só.
   Edition limpa.
 - **[CONTEXT.md](CONTEXT.md):** vocabulário load-bearing (Landing,
   Bronze, Silver, Gold, Janela de ingestão, Trio de consumo).
-- **[docs/adr/](docs/adr/):** 16 ADRs aceitas que sustentam as
+- **[docs/adr/](docs/adr/):** 17 ADRs aceitas que sustentam as
   decisões load-bearing (storage, expectations, fronteira ingestão↔
   modelagem, drift TLC, ...).
 - **[docs/CASE.md](docs/CASE.md):** enunciado original iFood.
