@@ -11,6 +11,19 @@ em projetos de ETL.
 Feito em 2 dias usando spec-driven development com workflow agêntico,
 garantindo ADRs, testes e observabilidade.
 
+## Mapa do repo
+
+| Dir | O que tem | README |
+|---|---|---|
+| `ingestion/` | Notebook landing + DLT pipeline (Bronze + Silver) + SQL audit | [ingestion/README.md](ingestion/README.md) |
+| `dbt/` | dbt-databricks project (4 Gold views + dim_locations + tests) | [dbt/models/gold/README.md](dbt/models/gold/README.md) |
+| `notebooks/` | `answers.py` (Q1+Q2+EDA interativo, camada de exibição) | [notebooks/README.md](notebooks/README.md) |
+| `src/nyc_taxi_case/` | Helpers Python puros side-effect-free (sem Spark/IO) | [src/nyc_taxi_case/README.md](src/nyc_taxi_case/README.md) |
+| `resources/` | DAB bundle resources (2 jobs + DLT pipeline + dashboard) | [resources/README.md](resources/README.md) |
+| `docs/` | PLAN.md (histórico), RUNBOOK.md, CASE.md, 17 ADRs em `adr/` | [docs/adr/README.md](docs/adr/README.md) |
+
+Entry-points: [`databricks.yml`](databricks.yml) (DAB), [`pyproject.toml`](pyproject.toml) (helpers + tests), [`dbt/dbt_project.yml`](dbt/dbt_project.yml) (dbt).
+
 ## Como esse repo foi construído
 
 70 commits em 2 dias, autor único, distribuídos em 15 tickets
