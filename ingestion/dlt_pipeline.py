@@ -58,7 +58,7 @@ from typing import TYPE_CHECKING
 import dlt  # type: ignore[import-not-found]  # Databricks-provided
 from pyspark.sql import functions as F  # noqa: N812
 
-from nyc_taxi_case.schema import FILE_YEAR_MONTH_PATTERN, REQUIRED_TLC_COLUMNS
+from nyc_taxi_case.case_contract import FILE_YEAR_MONTH_PATTERN, REQUIRED_TLC_COLUMNS
 from nyc_taxi_case.tlc_schema import TLC_RENAME_MAP, bronze_schema_hints, canonical_type
 
 # --------------------------------------------------------------------------- #
@@ -66,7 +66,7 @@ from nyc_taxi_case.tlc_schema import TLC_RENAME_MAP, bronze_schema_hints, canoni
 # --------------------------------------------------------------------------- #
 # Ticket #05 / ADR-0007: 6 Silver + 1 Bronze warn, **zero expect_or_fail**.
 # The contract is "fail soft + observe in event_log" — schema drift is caught
-# pre-deploy by ``test_tlc_schema.py``/``test_schema.py``; this layer is the
+# pre-deploy by ``test_tlc_schema.py``/``test_case_contract.py``; this layer is the
 # runtime safety net, never the gating mechanism.
 #
 # The Bronze rule is composed from ``REQUIRED_TLC_COLUMNS`` so a change in
@@ -323,7 +323,7 @@ def _build_silver_projection(bronze: DataFrame) -> DataFrame:
             "yyyy-MM",
         ).alias("pickup_year_month"),
         # file_year_month: ADR-0004. Single regex source-of-truth lives
-        # in ``nyc_taxi_case.schema.FILE_YEAR_MONTH_PATTERN``; we reuse
+        # in ``nyc_taxi_case.case_contract.FILE_YEAR_MONTH_PATTERN``; we reuse
         # its string form here so a refactor of the helper propagates.
         F.regexp_extract(
             F.col("_source_file_path"),

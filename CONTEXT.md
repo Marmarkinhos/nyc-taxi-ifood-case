@@ -130,7 +130,7 @@ contrato. Espelha o padrão iFood (`ifp-data-ingestions` DLT-puro +
   invertido); warn quando o problema é ortogonal às outras colunas
   (`passenger_count_in_range`, `vendor_id_in_dictionary`,
   `pickup_month_matches_file`). Contrato de schema TLC é protegido por
-  `ingestion/tests/test_schema.py` (CI) + warn-only na Bronze.
+  `ingestion/tests/test_case_contract.py` (CI) + warn-only na Bronze.
 - **dbt tests** — testes idiomáticos dbt rodando no `job_dbt`,
   inventário fixo (ADR-0007 §Decision item 3):
   - `not_null` em 5 colunas exigidas do **source Silver**

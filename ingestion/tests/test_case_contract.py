@@ -1,4 +1,4 @@
-"""Tests for nyc_taxi_case.schema — case schema contract and filename regex.
+"""Tests for nyc_taxi_case.case_contract — case schema contract and filename regex.
 
 Contract (case statement, 5 required columns on Silver/Gold):
 - VendorID
@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import pytest
 
-from nyc_taxi_case.schema import (
+from nyc_taxi_case.case_contract import (
     REQUIRED_TLC_COLUMNS,
     SchemaContractError,
     extract_file_year_month,

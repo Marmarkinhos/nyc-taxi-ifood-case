@@ -176,7 +176,7 @@ def _head_probe(url: str) -> ProbeResult:  # pragma: no cover - IO
 
 def _month_from_url(url: str) -> str:
     """Extract ``YYYY-MM`` from a TLC URL. Trusts the canonical filename."""
-    from nyc_taxi_case.schema import extract_file_year_month
+    from nyc_taxi_case.case_contract import extract_file_year_month
 
     parsed = extract_file_year_month(url)
     if parsed is None:

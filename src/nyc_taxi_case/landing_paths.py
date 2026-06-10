@@ -25,7 +25,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from nyc_taxi_case.schema import FILE_YEAR_MONTH_PATTERN
+from nyc_taxi_case.case_contract import FILE_YEAR_MONTH_PATTERN
 from nyc_taxi_case.window import parse_year_month
 
 __all__ = [

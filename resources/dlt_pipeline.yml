@@ -54,7 +54,7 @@ resources:
       # job-side ``environments.spec.dependencies``. The same wheel
       # that the job tasks install needs to be on the pipeline runtime
       # too, because ``ingestion/dlt_pipeline.py`` imports
-      # ``nyc_taxi_case.schema`` and ``nyc_taxi_case.tlc_schema``.
+      # ``nyc_taxi_case.case_contract`` and ``nyc_taxi_case.tlc_schema``.
       # Path mirrors the job-side dependency: DAB uploads ``type: whl``
       # artifacts to ${workspace.artifact_path}/.internal/, NOT to
       # ${workspace.file_path}/dist/ (see job_ingestion.yml note).

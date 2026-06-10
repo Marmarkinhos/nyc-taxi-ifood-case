@@ -5,7 +5,7 @@ properties:
 
 1. Every column from the TLC source is **renamed** to snake_case. Five
    of those names are part of the case statement contract
-   (:data:`nyc_taxi_case.schema.REQUIRED_TLC_COLUMNS`); the other 14
+   (:data:`nyc_taxi_case.case_contract.REQUIRED_TLC_COLUMNS`); the other 14
    are kept because Silver is the "canonical" layer (ADR-0001) and
    because dropping them would invalidate the "Medallion real
    reutilizável" argument (ADR-0005).

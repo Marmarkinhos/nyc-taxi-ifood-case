@@ -10,7 +10,7 @@ elsewhere in the repo):
 
 * All 19 TLC Yellow 2023 columns are mapped (CONTEXT.md "Silver",
   ADR-0005 lists the 14 "ignored" ones; the 5 required come from
-  ``REQUIRED_TLC_COLUMNS`` in :mod:`nyc_taxi_case.schema`).
+  ``REQUIRED_TLC_COLUMNS`` in :mod:`nyc_taxi_case.case_contract`).
 * The rename map is bijective: no two TLC columns collapse onto the
   same snake_case name (a regression here silently drops data).
 * Every TLC column gets a Spark SQL type so the Silver projection
@@ -26,7 +26,7 @@ from __future__ import annotations
 
 import pytest
 
-from nyc_taxi_case.schema import REQUIRED_TLC_COLUMNS
+from nyc_taxi_case.case_contract import REQUIRED_TLC_COLUMNS
 from nyc_taxi_case.tlc_schema import (
     BRONZE_SCHEMA_HINT_TYPES,
     TLC_COLUMN_TYPES,

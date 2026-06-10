@@ -9,9 +9,10 @@ unitários locais (`uv run pytest`).
 
 Módulos:
 
-- [`schema.py`](schema.py) — contrato externo do case (constantes
-  `MIN_MONTH`, `MAX_MONTH`, regex `FILE_YEAR_MONTH_PATTERN`,
-  `extract_file_year_month`).
+- [`case_contract.py`](case_contract.py) — contrato externo do case
+  (5 colunas obrigatórias, regex `FILE_YEAR_MONTH_PATTERN`,
+  `extract_file_year_month`). Renomeado de `schema.py` pra
+  desambiguar de `tlc_schema.py`.
 - [`tlc_schema.py`](tlc_schema.py) — mapa de rename TLC → canônico +
   tipos Silver + `bronze_schema_hints()` (ADR-0014/0015).
 - [`landing_paths.py`](landing_paths.py) — montagem de paths de

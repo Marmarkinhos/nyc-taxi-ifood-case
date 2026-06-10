@@ -1,4 +1,9 @@
-"""Schema contract and filename parsing for TLC Yellow Taxi data.
+"""Case contract: required columns + filename parsing for TLC Yellow Taxi.
+
+This file used to be named ``schema.py``; renamed to ``case_contract.py``
+to disambiguate from ``tlc_schema.py`` (which holds the canonical
+rename map + Silver types). This module owns the **external** case
+contract; ``tlc_schema.py`` owns the **internal** TLC→Silver mapping.
 
 This module owns two things the case treats as load-bearing:
 
