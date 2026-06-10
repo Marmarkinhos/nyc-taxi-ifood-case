@@ -7,11 +7,34 @@ desinflar a entrada principal.
 ## Pré-requisitos
 
 - Workspace Databricks **Free Edition**.
-- `~/.databrickscfg` com profile `free-edition` apontando pro PAT
-  do workspace.
+- `~/.databrickscfg` com profile apontando pro PAT do workspace.
+  Nome do profile é livre — abaixo uso `free-edition` por convenção,
+  troque pelo seu se for outro:
+
+      [free-edition]
+      host  = https://<seu-workspace>.cloud.databricks.com
+      token = <seu-PAT>
+
 - Python 3.12 + [uv](https://docs.astral.sh/uv/) +
   [Databricks CLI](https://docs.databricks.com/dev-tools/cli/install.html)
   na máquina do operador.
+- **SQL warehouse id do seu tenant** (varia por workspace Free
+  Edition). Descubra via:
+
+      databricks warehouses list --profile free-edition
+
+  e exporte como variável DAB pra todas as invocações abaixo:
+
+      export BUNDLE_VAR_sql_warehouse_id=<id-do-comando-acima>
+
+  Sem isso, `bundle validate` falha com `variable sql_warehouse_id
+  has no value assigned`. Por que sem default: ver comentário em
+  `databricks.yml` no bloco `user_dev.variables.sql_warehouse_id`.
+
+O bundle **não** declara `workspace.host` no target `user_dev`: o
+CLI resolve a partir do profile passado em `--profile`. Isto mantém
+o bundle portátil cross-tenant (qualquer Free Edition funciona sem
+editar YAML).
 
 ## Sequência canônica (deploy + run)
 

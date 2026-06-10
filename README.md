@@ -156,6 +156,35 @@ Adicionar uma 4ª surface (Power BI, Streamlit, `/api/2.0/sql/statements`,
 …) significa adicionar uma query contra `workspace.nyc_taxi_gold.*`,
 não duplicar lógica analítica. SSoT em um lugar só.
 
+## Reproduzir num workspace Free Edition
+
+Pré-reqs: conta Databricks Free Edition, Python 3.12 +
+[uv](https://docs.astral.sh/uv/) +
+[Databricks CLI](https://docs.databricks.com/dev-tools/cli/install.html).
+
+1. Crie um profile no `~/.databrickscfg` apontando pro seu workspace
+   (qualquer nome; abaixo uso `free-edition`):
+
+       [free-edition]
+       host  = https://<seu-workspace>.cloud.databricks.com
+       token = <seu-PAT>
+
+2. Descubra o id do SQL warehouse do seu tenant (varia por Free
+   Edition):
+
+       databricks warehouses list --profile free-edition
+
+3. Deploy + run:
+
+       export BUNDLE_VAR_sql_warehouse_id=<id-do-passo-2>
+       databricks bundle deploy --target user_dev --profile free-edition
+       databricks bundle run job_ingestion --target user_dev --profile free-edition
+       databricks bundle run job_dbt       --target user_dev --profile free-edition
+
+O bundle não declara `workspace.host`: o CLI resolve a partir do
+profile passado em `--profile`. Override de janela de ingestão,
+validação local e troubleshoot em [docs/RUNBOOK.md](docs/RUNBOOK.md).
+
 ## Apêndices
 
 - **[docs/RUNBOOK.md](docs/RUNBOOK.md):** comandos completos de

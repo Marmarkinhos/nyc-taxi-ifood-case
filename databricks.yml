@@ -8,9 +8,12 @@
 # `dbt/models/sources.yml` pointing at the Silver canonical table.
 # See ADR-0011.
 #
-# Schedules are paused in every target. Execution is manual:
-#   databricks bundle run job_ingestion --profile free-edition
-#   databricks bundle run job_dbt       --profile free-edition
+# Schedules are paused in every target. Execution is manual; profile
+# name is whatever the operator chose in ~/.databrickscfg (the CLI
+# resolves workspace.host from that profile):
+#   export BUNDLE_VAR_sql_warehouse_id=<id>
+#   databricks bundle run job_ingestion --target user_dev --profile <name>
+#   databricks bundle run job_dbt       --target user_dev --profile <name>
 #
 # `databricks bundle validate` works offline (schema check only); deploy
 # requires a real workspace + PAT (Free Edition: no service principal).
@@ -49,14 +52,21 @@ include:
 # ---------------------------------------------------------------------------
 targets:
 
-  # Personal dev target on the Free Edition workspace. Default for
-  # `bundle run` / `bundle deploy` so a stray invocation hits dev, not
-  # a hypothetical production.
+  # Personal dev target deployed under the operator's own user (PAT
+  # in ~/.databrickscfg), as opposed to `prod` which is shaped for
+  # service-principal CI deploys. Default for `bundle run` /
+  # `bundle deploy` so a stray invocation hits dev, not a hypothetical
+  # production. Free Edition always lands here (no SP support).
+  #
+  # `workspace.host` is intentionally NOT declared: the Databricks CLI
+  # resolves the host from the profile passed via `--profile <name>`
+  # (which reads `host = ...` from ~/.databrickscfg). This keeps the
+  # bundle portable across Free Edition tenants — a third party clones
+  # the repo, points their own profile at their own workspace, runs
+  # `bundle deploy --profile <theirs>`, no YAML edit required.
   user_dev:
     mode: development
     default: true
-    workspace:
-      host: https://dbc-88968762-8346.cloud.databricks.com
     variables:
       # Free Edition has a single MANAGED catalog called `workspace`.
       catalog: workspace
@@ -64,10 +74,15 @@ targets:
       # devs share one catalog. Empty here because the Free Edition
       # workspace is single-tenant; left wired so the lever exists.
       catalog_prefix: ""
-      # Serverless Starter Warehouse auto-provisioned by the Free
-      # Edition workspace (captured 2026-06-09 via SQL Warehouses UI ->
-      # Connection details). Used by job_ingestion.update_audit_task.
-      sql_warehouse_id: "10ba36a843e45ac1"
+      # Warehouse id varies per Free Edition tenant — no default so
+      # the bundle fails fast and clearly if the operator forgets to
+      # pass it. Discover yours via:
+      #   databricks warehouses list --profile <your-profile>
+      # then pass it at deploy/run time, e.g.:
+      #   export BUNDLE_VAR_sql_warehouse_id=<id>
+      # Used by job_ingestion.update_audit_task.
+      sql_warehouse_id:
+        description: "SQL warehouse id. See `databricks warehouses list`."
 
   # Placeholder shape for a hypothetical production deployment. Kept
   # so `bundle validate --target prod` exercises the target wiring;
