@@ -26,7 +26,7 @@ Implementação completa do case NYC Yellow Taxi, quebrada via skill
 | [10](./10-job-dbt-dab.md) | `job_dbt` DAB | `done` ✅ | AFK | #01, #08, #15 |
 | [11](./11-dbt-analyses.md) | dbt analyses (perguntas + EDA) | `done` ✅ | AFK | #08 |
 | [12](./12-notebook-dashboard.md) | Notebook `answers.py` + AI/BI dashboard | `done` ✅ | AFK | #11 |
-| [13](./13-readme-finalization.md) | README + monitoring view + revogação PAT | `ready-for-human` | HITL | #12 |
+| [13](./13-readme-finalization.md) | README + monitoring view + revogação PAT | `done` ✅ (PAT revogação manual HITL pendente do user) | HITL | #12 |
 | [14](./14-bronze-drift-metrics.md) | Bronze drift metrics + job-level alerting (gap do ADR-0014) | `wontfix` (over-engineering, user decidiu) | AFK | — |
 | [15](./15-resolve-job-context-bug.md) | Fix `_resolve_job_context()` retornando `"interactive"` no bundle | `done` ✅ | AFK | — |
 
@@ -40,21 +40,27 @@ Implementação completa do case NYC Yellow Taxi, quebrada via skill
   dashboard) via Agent Manager worktrees, zero overlap, ambos mergeados
   limpos.
 
-## Próximo passo
+## Status final
 
-12 de 13 tickets fechados (#14 marcado `wontfix` por decisão do user).
-Pipeline ingestion + modelagem 100% deployado e validado end-to-end:
+**13 de 14 tickets fechados** (#14 marcado `wontfix` por decisão do
+user). Case end-to-end pronto pra avaliador:
 
 - Silver `workspace.nyc_taxi_bronze.yellow_taxi_trips` — 16.04M rows
 - Gold `workspace.nyc_taxi_gold.yellow_taxi_trips_consumption` — 16.04M
   rows enriquecidas com borough/zone
 - `dim_locations` seed — 265 rows
-- `job_ingestion` (id `308012953236381`) e `job_dbt` (id `887368802198651`),
-  ambos independentes (ADR-0011), ambos com schedule pausado, execução
+- `job_ingestion` (id `308012953236381`, 4 tasks: landing →
+  dlt_pipeline → update_audit → refresh_monitoring_view) e `job_dbt`
+  (id `887368802198651`, 1 task: dbt deps/seed/run/test), ambos
+  independentes (ADR-0011), ambos com schedule pausado, execução
   manual via `bundle run`
 - Notebook `notebooks/answers.py` + AI/BI dashboard (DAB) renderizando
   Q1/Q2 + EDA contra o Gold
+- Monitoring view `workspace.nyc_taxi_monitoring.gold_pipeline_observability`
+  expondo o event_log do DLT (#13)
+- README root reescrito cobrindo TL;DR + runbook + arquitetura +
+  ADRs + limitações Free Edition (#13)
 
-**Único restante: #13 — README finalization + revogação do PAT
-Free Edition.** Ticket marcado `ready-for-human` (HITL), provavelmente
-melhor executar na sessão principal sem spawn de worktree.
+**HITL pendente do user** (não bloqueia avaliador, é higiene):
+revogar PAT Free Edition na UI da Databricks + `git push origin main`
+dos commits locais.
