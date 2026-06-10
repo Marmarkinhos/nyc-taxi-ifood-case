@@ -1,7 +1,8 @@
 ---
-status: ready-for-agent
+status: wontfix
 created: 2026-06-09
-tags: [bronze, drift, observability, expectations, alerting]
+closed: 2026-06-09
+tags: [bronze, drift, observability, expectations, alerting, wontfix]
 blocked-by: [06-job-ingestion-dab.md]
 ---
 
@@ -97,3 +98,24 @@ remanescentes** de observabilidade de drift:
 
 - `06-job-ingestion-dab.md` precisa estar verde end-to-end (Fix #7
   incluído) pra essa observabilidade ter sinal estável pra medir.
+
+## Resolution: wontfix (over-engineering pro escopo do case)
+
+**Decisão do user (2026-06-09):** não implementar.
+
+Racional:
+
+- O case do iFood pede pipeline funcional + 2 perguntas analíticas
+  + EDA. Não pede observabilidade de drift estrutural nem alerting
+  cross-job.
+- O fix da Fix #7 (ADR-0014) já cobre o vetor de drift mais
+  provável da fonte TLC (case rename via `cloudFiles.schemaHints`),
+  e a expectation warn-only `bronze_no_rescued_data` já dá um
+  primeiro sinal de drift residual visível no event_log da DLT.
+- Os gaps remanescentes documentados acima (drift estrutural
+  schema diff, % rescued na audit table, alerting job-level) são
+  reais mas ortogonais ao critério "entregue" do case. Implementar
+  agora seria gold-plating.
+- Os gaps continuam **registrados aqui** e em ADR-0014 §"Gaps
+  reconhecidos" — se o pipeline virar produção, este ticket pode
+  ser reaberto como ponto de partida sem retrabalho de análise.

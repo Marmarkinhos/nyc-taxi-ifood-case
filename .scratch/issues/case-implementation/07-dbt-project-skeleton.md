@@ -9,7 +9,7 @@ blocks: [08-dbt-gold-model.md]
 
 # 07 — dbt project skeleton + `sources.yml` + seed `dim_locations`
 
-## Resultado (2026-06-09): ✅ DONE
+## Resolution (2026-06-09): ✅ DONE
 
 Skeleton entregue, `dim_locations` materializada em
 `workspace.nyc_taxi_gold.dim_locations` (265 rows, `location_id INT`,

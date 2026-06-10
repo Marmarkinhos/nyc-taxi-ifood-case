@@ -9,7 +9,7 @@ result: PASS
 
 # 01 — Probe Opção B: validar `dbt_task` no DAB em serverless Free Edition
 
-## Resultado (2026-06-08): ✅ PASS
+## Resolution (2026-06-08): ✅ PASS
 
 `dbt_task` em DAB serverless Free Edition funciona end-to-end.
 Run `1038370540326389` no job `171245947083102` terminou

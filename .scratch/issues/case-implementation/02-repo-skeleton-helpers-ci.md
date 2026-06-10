@@ -68,6 +68,25 @@ ou jobs YAMLs concretos — esses entram nos slices seguintes.
 
 None.
 
+## Resolution (2026-06-09): ✅ DONE
+
+Entregue nos commits `d13d6ac`, `1fed2b6`, `c9e78dc` (ver
+`commits:` no frontmatter). Skeleton do monorepo + helpers puros
+TDD + CI rodando contra `uv run ruff check .` e `uv run pytest -q`
+estabelecido como gate; todas as ondas subsequentes de tickets
+herdaram esses gates como precondição de merge.
+
+Cobertura concreta entregue:
+
+- `databricks.yml` raiz + `resources/general_variables.yml`
+- Package `src/nyc_taxi_case/` com helpers puros
+  (`window.py`, `tlc_urls.py`, `schema.py`) + tests
+- CI GitHub Actions verde
+- `uv` lockfile (`uv.lock`) commitado pra reprodutibilidade
+
+Validado de cabo a rabo pelos 12 tickets seguintes — todo merge
+desta feature passou pelos gates definidos aqui.
+
 ## Notas
 
 - Pattern iFood: `pagob2b-dbt` + `ifp-data-ingestions` separam
