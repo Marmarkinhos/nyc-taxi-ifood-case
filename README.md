@@ -197,7 +197,7 @@ implementação (16 fixes documentados) foram acumulados em
 [AGENTS.md](AGENTS.md) pra que qualquer agente (humano ou IA)
 continue o trabalho a partir daqui.
 
-O ciclo foi spec-driven: PRD em [docs/PLAN.md](docs/PLAN.md) → tickets
+O ciclo foi spec-driven: PRD em [docs/PLAN.md](docs/PLAN.md) (histórico) → tickets
 como vertical slices → implementação test-first quando aplicável →
 ADR quando a decisão divergiu do plano original (caso de
 [ADR-0016](docs/adr/0016-passenger-count-warn-em-vez-de-drop.md), que

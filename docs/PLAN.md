@@ -1,5 +1,12 @@
 # NYC Taxi Case (iFood) — Plano de execução
 
+> 📜 **HISTÓRICO** — plano original pré-implementação. As decisões
+> correntes vivem em [`docs/adr/`](adr/). ADRs supersedem este
+> documento onde divergem (ex: ADR-0016 reverteu a decisão de
+> dropar `passenger_count` fora do range; ADRs 0013–0015 evoluíram
+> a estratégia de drift de schema TLC). Mantido para referência
+> arqueológica do approach spec-driven.
+
 > Plano gerado em sessão Architect (Kilo) replicando práticas do
 > `ifp-data-ingestions` (escopo growth) num repo público no GitHub pessoal
 > rodando em **Databricks Free Edition**.
