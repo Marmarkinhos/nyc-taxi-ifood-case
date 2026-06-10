@@ -56,6 +56,12 @@ ignore = []
 
 [tool.ruff.lint.per-file-ignores]
 "ingestion/tests/**" = ["B011"]  # allow assert False in tests
+# Databricks notebooks: ``spark``, ``dbutils`` and ``display`` are
+# runtime-provided builtins (not importable), markdown cells (``# MAGIC %md``)
+# routinely exceed 100 cols, and cell-scoped imports may sit below other
+# logic (so E402 doesn't apply). Pragmatic ignore set rather than scattering
+# ``noqa`` on almost every line of every notebook.
+"notebooks/**" = ["F821", "E501", "E402"]
 
 # ---------------------------------------------------------------------------
 # Mypy
