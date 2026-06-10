@@ -1,0 +1,119 @@
+# resources/job_dbt.yml
+#
+# ``job_dbt`` — the modelling-side DAB job (ADR-0010, ADR-0011).
+#
+# One single ``dbt_task`` that runs the dbt project under ``../dbt``
+# end-to-end (``deps + seed + run + test``) against the Silver
+# canonical table published by ``job_ingestion`` via
+# ``dbt/models/sources.yml``. There is NO cross-job ``depends_on``,
+# NO ``pipeline_task``, NO reference to ``job_ingestion`` anywhere
+# — ADR-0011 ("2 jobs DAB independentes, sem depends_on cross-job").
+# The only contract between the two halves of the monorepo is the
+# Silver table at ``${var.catalog}.${var.silver_schema}.
+# yellow_taxi_trips``.
+#
+# Behaviour if ``job_ingestion`` has never run:
+#   - ``dbt deps`` ok
+#   - ``dbt seed`` materialises ``dim_locations`` ok (independent
+#     of Silver — it reads from the committed CSV)
+#   - ``dbt run`` fails hard via the ``raise_compiler_error`` guard
+#     on the Gold model (ticket #08) with an actionable message
+#   - ``dbt test`` does not get a chance to run
+#
+# Probe B (ticket #01, ADR-0010 §Validação empírica) validated this
+# shape end-to-end on Free Edition serverless. Four critical lessons
+# are baked into the structure below:
+#
+#   1. NO ``--target`` flag on any dbt command. The Databricks
+#      runtime auto-generates a ``databricks_cluster`` profile when
+#      ``dbt_task.catalog/schema/warehouse_id`` are set; passing
+#      ``--target user_dev`` would force dbt to look up our committed
+#      ``dbt/profiles.yml``, which the runtime explicitly ignores.
+#
+#   2. ``dbt/profiles.yml`` IS committed but only for local CLI runs
+#      (``cd dbt && dbt run --target user_dev`` with ``DBT_TOKEN``
+#      exported). The runtime never reads it.
+#
+#   3. ``dbt-databricks`` goes under ``environments.spec.dependencies``
+#      (PEP 508 pypi spec), NOT under a ``libraries:`` block.
+#      ``libraries:`` is the legacy all-purpose-cluster surface and
+#      is rejected on serverless compute.
+#
+#   4. ``dbt_project.yml`` omits ``+schema`` on models AND seeds so
+#      that the schema set on ``dbt_task`` below becomes the final
+#      schema name (avoids the dbt ``<target_schema>_<config_schema>``
+#      double-concat surfaced in the probe).
+#
+# Schedule is paused in every target (ADR-0011); execution is manual:
+#   databricks bundle run job_dbt --target user_dev
+
+resources:
+  jobs:
+    job_dbt:
+      name: "[${bundle.target}] nyc-taxi dbt (silver → gold + analyses)"
+
+      # Schedule paused in every target (ADR-0011). The block is here
+      # so the job shows up in the workspace UI as "scheduled but
+      # paused" rather than absent — easier to flip on later without
+      # editing the YAML.
+      schedule:
+        quartz_cron_expression: "0 30 6 * * ?"  # nominal: daily 06:30 UTC
+        timezone_id: UTC
+        pause_status: PAUSED
+
+      tasks:
+
+        # --------------------------------------------------------------
+        # Single task: run the dbt project end-to-end.
+        # --------------------------------------------------------------
+        # ``project_directory`` is resolved relative to the bundle root
+        # (where ``databricks.yml`` lives) at deploy time and uploaded
+        # under ``${workspace.file_path}`` so the runtime can ``cd``
+        # into it before invoking ``dbt``.
+        #
+        # The four commands run in order; any non-zero exit short-
+        # circuits the rest:
+        #   - ``dbt deps``: no-op today (``packages.yml`` is empty) but
+        #     kept so adding a package later is a one-line edit.
+        #   - ``dbt seed``: materialises ``dim_locations`` from
+        #     ``seeds/taxi_zone_lookup.csv``. Idempotent — re-running
+        #     truncates+reloads the seed table.
+        #   - ``dbt run``: builds the Gold model + any other models
+        #     under ``models/``. Fails hard with the guard from #08 if
+        #     the Silver source table does not exist.
+        #   - ``dbt test``: runs every ``data_test:`` and ``unit_test``
+        #     declared in the project (10 tests total as of ticket #09).
+        #
+        # NO ``--target`` flag anywhere (lesson 1 above).
+        - task_key: dbt_task
+          dbt_task:
+            project_directory: ../dbt
+            # ``catalog`` + ``schema`` + ``warehouse_id`` together
+            # trigger the runtime to inject a ``databricks_cluster``
+            # profile that dbt uses by default. ``schema`` here is
+            # the FINAL schema name (no dbt-side prefixing — lesson 4).
+            catalog: ${var.catalog}
+            schema: ${var.gold_schema}
+            warehouse_id: ${var.sql_warehouse_id}
+            commands:
+              - dbt deps
+              - dbt seed
+              - dbt run
+              - dbt test
+          environment_key: serverless_default
+
+      # ------------------------------------------------------------------
+      # Compute environments (serverless only — Free Edition constraint)
+      # ------------------------------------------------------------------
+      # ``environments`` is the modern DAB block for serverless task
+      # compute; binds to tasks via ``environment_key``. ``dbt-
+      # databricks`` is pinned to the same major as what the probe
+      # validated (1.12.0 on serverless client 3) with an upper bound
+      # of <2 so a SemVer break in dbt-databricks 2.x does not silently
+      # break this job (lesson 3 above).
+      environments:
+        - environment_key: serverless_default
+          spec:
+            client: "2"
+            dependencies:
+              - dbt-databricks>=1.10,<2
