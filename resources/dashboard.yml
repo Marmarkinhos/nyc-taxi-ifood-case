@@ -1,0 +1,43 @@
+# resources/dashboard.yml
+#
+# Consumption layer for the case answers (ticket #12). Two assets:
+#
+#   1. ``notebooks/answers.py`` — Python notebook that reads the 3
+#      Gold analytics models published by job_dbt (#10) and calls
+#      ``display()`` so the evaluator gets the platform's interactive
+#      chart UI for free. Source-only: a notebook is just a ``.py``
+#      file shipped to ${workspace.file_path} by ``bundle deploy`` via
+#      the default ``sync.include`` (no explicit resource block).
+#
+#   2. ``resources/nyc_taxi_dashboard.lvdash.json`` — AI/BI dashboard
+#      (Lakeview) declared below. Datasets are SQL queries that mirror
+#      ``dbt/analyses/*.sql`` (the SSoT), running against the Gold
+#      view ``workspace.nyc_taxi_gold.yellow_taxi_trips_consumption``
+#      via the same Free Edition Serverless Starter warehouse
+#      (``${var.sql_warehouse_id}``) already used by
+#      ``update_audit_task`` in job_ingestion (#06).
+#
+# Why two parallel renderers?
+# ---------------------------
+# Plan Decisão #8 ("trio de consumo": dbt + notebook + dashboard).
+# The notebook is the "code-first" path (open notebook, run cell,
+# get an interactive chart with the source SQL visible one click
+# away). The Lakeview dashboard is the "viewer-first" path: a single
+# URL that produces the 3 charts without anyone editing code. Both
+# read the same Gold view → numbers stay consistent.
+#
+# Variables are declared in ``resources/general_variables.yml``
+# (``${var.catalog}``, ``${var.sql_warehouse_id}``, etc.). This file
+# does NOT hard-code catalog/schema/warehouse anywhere.
+
+resources:
+  dashboards:
+    nyc_taxi_case_answers:
+      display_name: "[${bundle.target}] NYC Yellow Taxi — case answers"
+      file_path: ./nyc_taxi_dashboard.lvdash.json
+      # Warehouse the dashboard uses to execute every dataset query.
+      # Free Edition auto-provisions a single Serverless Starter
+      # Warehouse; its id is pinned per target in databricks.yml
+      # (general_variables.yml has the description). First query on
+      # a stopped warehouse incurs a ~20s cold start.
+      warehouse_id: ${var.sql_warehouse_id}
