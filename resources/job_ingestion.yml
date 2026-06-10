@@ -147,6 +147,35 @@ resources:
             parameters:
               job_run_id: "{{job.run_id}}"
 
+        # --------------------------------------------------------------
+        # Task 4: refresh the gold_pipeline_observability monitoring view
+        # --------------------------------------------------------------
+        # ``CREATE OR REPLACE VIEW`` over ``event_log(TABLE(<bronze>))``
+        # so the evaluator can audit recent DLT updates (flow_progress,
+        # expectation_metrics, pipeline_done) from a single SELECT in
+        # the SQL editor or a Lakeview tile. Idempotent — re-running
+        # the task rebinds the view to the (now-published) Bronze
+        # table reference.
+        #
+        # Same ``sql_task.file`` pattern as ``update_audit_task``
+        # (literal catalog/schema in the SQL body because DAB does not
+        # substitute ${var.*} inside files referenced via ``file.path``
+        # — single grep keeps overrides discoverable). Depends on
+        # ``update_audit_task`` so the view is refreshed AFTER the
+        # audit row is finalised; same place in the DAG either way
+        # (no real dependency, but keeps the topology linear). See
+        # ``ingestion/sql/create_monitoring_view.sql`` for the
+        # event_type whitelist rationale and the
+        # ``event_log(TABLE(...))`` vs ``event_log("<pipeline_id>")``
+        # discussion (AGENTS.md "gotchas operacionais").
+        - task_key: refresh_monitoring_view_task
+          depends_on:
+            - task_key: update_audit_task
+          sql_task:
+            warehouse_id: ${var.sql_warehouse_id}
+            file:
+              path: ../ingestion/sql/create_monitoring_view.sql
+
       # ------------------------------------------------------------------
       # Compute environments (serverless only — Free Edition constraint)
       # ------------------------------------------------------------------
