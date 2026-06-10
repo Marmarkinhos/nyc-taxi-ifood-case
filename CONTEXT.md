@@ -108,12 +108,21 @@ contrato. Espelha o padrão iFood (`ifp-data-ingestions` DLT-puro +
     artifacts. Wheel do `nyc_taxi_case` vive aqui; `dependencies` nos
     blocos `environments` / `environment` precisam apontar pra cá
     (não pra `file_path/dist/`). ADR-0012.
-- **Trio de consumo** — modelos dbt em `dbt/models/gold/*.sql` (SSoT,
-  views materializadas) + notebook `answers.py` (orquestra `display()`
-  dos modelos via `spark.read.table`) + AI/BI dashboard `.lvdash.json`
-  (referencia mesmas tabelas materializadas pelo dbt). **Modelo dbt é
-  single source of truth**; notebook e dashboard apenas exibem (ver
-  README seção "Trio de consumo").
+- **Trio de consumo** — três surfaces de leitura sobre o **mesmo**
+  Gold dbt (SSoT), com **cobertura intencionalmente assimétrica** por
+  persona:
+  - **dbt Gold models** (`dbt/models/gold/*.sql`, views materializadas) —
+    SSoT, cobertura total (Q1 + Q2 + EDA), persona engenheiro/SQL.
+  - **Notebook** (`notebooks/answers.py`) — orquestra `display()` das
+    3 análises (Q1 + Q2 + EDA) via `spark.read.table`, com heatmap
+    interativo na EDA. Persona analista/exploratório.
+  - **AI/BI dashboard** (`.lvdash.json`) — subset case-literal (Q1 + Q2
+    apenas); persona avaliador/executivo que abre uma URL e vê as 2
+    respostas exigidas pelo case. A EDA é deliberadamente ausente aqui
+    — ela vive no notebook onde tem visualização mais rica (heatmap).
+  - **Modelo dbt é single source of truth**; notebook e dashboard apenas
+    exibem (cada um com o subset que faz sentido pra sua persona). Ver
+    README seção "Trio de consumo".
 - **Expectations** — 7 total (6 na Silver + 1 na Bronze); **nenhuma**
   é `expect_or_fail` em Free Edition (blast radius > sinal — ADR-0007).
   Severidade refinada per ADR-0016: drop **só quando manter a row
